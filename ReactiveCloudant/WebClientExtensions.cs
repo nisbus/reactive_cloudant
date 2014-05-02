@@ -14,46 +14,6 @@ namespace ReactiveCloudant
 {
     internal static class WebClientExtensions
     {
-        internal static IObservable<string> DownloadStringAsObservable(this WebClient client, Uri address, string username = "", string password = "", object userToken = null)
-        {
-            return Observable.Create<string>(observer =>
-            {
-                DownloadStringCompletedEventHandler handler = (sender, args) =>
-                {
-                    if (args.UserState != userToken) return;
-
-                    if (args.Cancelled)
-                        observer.OnCompleted();
-                    else if (args.Error != null)
-                        observer.OnError(args.Error);
-                    else
-                    {
-                        observer.OnNext(args.Result);
-                        observer.OnCompleted();
-                    }
-                };
-
-                client.DownloadStringCompleted += handler;
-                
-                try
-                {
-                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                    {
-                        var authInfo = username + ":" + password;
-                        client.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));
-                        client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
-                    }
-                    client.DownloadStringAsync(address, userToken);
-                }
-                catch (Exception ex)
-                {
-                    observer.OnError(ex);
-                }
-
-                return () => client.DownloadStringCompleted -= handler;
-            });
-        }
-
         internal static IObservable<T> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
         {
             return Observable.Create<T>(observer =>
@@ -116,11 +76,8 @@ namespace ReactiveCloudant
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                    {
-                        var authInfo = username + ":" + password;
-                        client.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));
-                        client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
-                    }
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
                     client.DownloadStringAsync(address, userToken);
                 }
                 catch (Exception ex)
@@ -182,10 +139,7 @@ namespace ReactiveCloudant
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                    {
-                        var authInfo = username + ":" + password;
-                        client.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));                    
-                    }
+                        client.SetAuthenticationHeaders(username, password);
                     client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
                     client.UploadStringAsync(address, method, data, userToken);
                 }
@@ -239,8 +193,7 @@ namespace ReactiveCloudant
             if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
             {
                 var authInfo = username + ":" + password;
-                client.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));
-                client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                client.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));                
             }
         }
     }

@@ -116,7 +116,7 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<T> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, IScheduler converterScheduler = null, string progressToken = "")
+        public IObservable<T> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, int limit, int skip, IScheduler converterScheduler = null, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database","database");
@@ -126,12 +126,26 @@ namespace ReactiveCloudant
                 throw new ArgumentException("You must specify a view name", "view");
             var url = BaseUrl +database+"/_design/"+designdocument+"/_view/"+ view;
             url += SetQueryParameters(key, startKey, endKey, includedocs);
-
+            url += SetLimitsAndSkips(inclusiveend, skip, limit);
             using (WebClient client = new WebClient())
             {
                 client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
                 return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
             }
+        }
+
+        private string SetLimitsAndSkips(bool inclusiveend, int skip, int limit)
+        {
+            string retVal = string.Empty;
+            if (inclusiveend && skip == 0 && limit == 0)
+                return "inclusive_end=true";
+            else if (inclusiveend)
+                retVal += "inclusive_end=true";
+            if (skip > 0)
+                retVal += "skip="+skip;
+            if (limit > 0)
+                retVal += "limit=" + limit;
+            return string.Empty;
         }
 
         /// <summary>

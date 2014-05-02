@@ -6,13 +6,13 @@ The queries support key, startkey and endkey as well as include docs and authent
   
 ###TODO  
   
-**Basic document management
+** Basic document management
 	- Add support for lists and shows.  
 	- Add listening to the changes feed.  
 	- Add attachment support (also for inline attachments).  
 	- Add bulk document operations.  
 	
-**Administration
+** Administration
 	- Delete database  
 	- Create database  
 	- Create API keys.  
