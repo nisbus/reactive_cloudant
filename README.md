@@ -13,8 +13,8 @@ The queries support key, startkey/endkey, inclusive_end, include_docs, skip/limi
 	- Add bulk document operations.  
 	
 **Administration**  
-	- Delete database  
-	- Create database  
+	- ~~Delete database~~  
+	- ~~Create database~~  
 	- ~~Create API keys.~~  
 	- ~~Grant/Revoke access to database.~~  
 
