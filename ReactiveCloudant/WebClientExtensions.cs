@@ -105,27 +105,7 @@ namespace ReactiveCloudant
                     {
                         try
                         {
-                            var response = JObject.Parse(args.Result);
-                            if (response == null)
-                                observer.OnNext(args.Result);
-                            else
-                            {
-                                var id = response.Property("id");
-                                if (id != null)
-                                {
-                                    JValue val = id.Value as JValue;
-                                    var doc_id = id.Value.ToString();
-                                    observer.OnNext(doc_id);
-                                }
-
-                                var revision = response.Property("rev");
-                                if (revision != null)
-                                {
-                                    JValue val = revision.Value as JValue;
-                                    var rev = val.Value.ToString();
-                                    observer.OnNext(rev);
-                                }
-                            }
+                            observer.OnNext(args.Result);
                             observer.OnCompleted();
                         }
                         catch (Exception ex)

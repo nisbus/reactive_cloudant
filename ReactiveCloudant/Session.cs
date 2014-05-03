@@ -81,7 +81,7 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>A successful save operation will send two strings to the returned stream, the first is the ID of the new document and the second is the revision number</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<string> Save(string database, object item, string id = "", string revision_id = "", string progressToken = "")
+        public IObservable<SaveDocumentResult> Save(string database, object item, string id = "", string revision_id = "", string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database to save to");
@@ -93,11 +93,39 @@ namespace ReactiveCloudant
             json = SetID(json, id);
             if (!string.IsNullOrWhiteSpace(revision_id))
                 json = SetRev(json, revision_id);
-
+            Subject<SaveDocumentResult> saveResult = new Subject<SaveDocumentResult>();
             using (WebClient client = new WebClient())
             {
                 client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
-                return client.UploadStringAsObservable(new Uri(url), "POST", json, Username, Password);
+                client.UploadStringAsObservable(new Uri(url), "POST", json, Username, Password).Subscribe(s =>
+                    {
+                        try
+                        {
+                            string doc_id = string.Empty;
+                            string rev_id = string.Empty;
+                            var response = JObject.Parse(s);
+                            var idProp = response.Property("id");
+                            if (idProp != null)
+                            {
+                                JValue val = idProp.Value as JValue;
+                                doc_id = idProp.Value.ToString();
+                            }
+
+                            var revision = response.Property("rev");
+                            if (revision != null)
+                            {
+                                JValue val = revision.Value as JValue;
+                                rev_id = val.Value.ToString();
+                            }
+                            saveResult.OnNext(new SaveDocumentResult(doc_id, rev_id));
+                        }
+                        catch (Exception e) 
+                        { 
+                            saveResult.OnError(e); 
+                        }
+                    },(e) => saveResult.OnError(e),
+                    () => saveResult.OnCompleted());
+                return saveResult.AsObservable();
             }
         }        
         
@@ -116,7 +144,7 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<T> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, int limit, int skip, IScheduler converterScheduler = null, string progressToken = "")
+        public IObservable<T> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database","database");
@@ -125,29 +153,14 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(view))
                 throw new ArgumentException("You must specify a view name", "view");
             var url = BaseUrl +database+"/_design/"+designdocument+"/_view/"+ view;
-            url += SetQueryParameters(key, startKey, endKey, includedocs);
-            url += SetLimitsAndSkips(inclusiveend, skip, limit);
+            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
             using (WebClient client = new WebClient())
             {
                 client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
                 return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
             }
         }
-
-        private string SetLimitsAndSkips(bool inclusiveend, int skip, int limit)
-        {
-            string retVal = string.Empty;
-            if (inclusiveend && skip == 0 && limit == 0)
-                return "inclusive_end=true";
-            else if (inclusiveend)
-                retVal += "inclusive_end=true";
-            if (skip > 0)
-                retVal += "skip="+skip;
-            if (limit > 0)
-                retVal += "limit=" + limit;
-            return string.Empty;
-        }
-
+        
         /// <summary>
         /// Calls a view in the database
         /// </summary>
@@ -174,22 +187,96 @@ namespace ReactiveCloudant
             }
         }
 
+        /// <summary>
+        /// Creates a new api key
+        /// </summary>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A stream that returns the APIKey generated and includes the new username and password</returns>
+        public IObservable<APIKey> CreateAPIKey(string progressToken = "")
+        {
+            var url = "https://cloudant.com/api/generate_api_key";
+            
+            Subject<APIKey> key = new Subject<APIKey>();            
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                client.UploadStringAsObservable(new Uri(url), "POST", "", Username, Password).Subscribe(s =>
+                    {
+                        try
+                        {                            
+                            var json = JObject.Parse(s);
+                            var password = json["password"].ToString();
+                            var username = json["key"].ToString(); 
+                            key.OnNext(new APIKey(username, password));
+                        }
+                        catch (Exception e)
+                        {
+                            key.OnError(e);
+                        }
+                    },(e) => key.OnError(e),
+                    () => key.OnCompleted());
+                return key.AsObservable();
+            }
+        }
+
+        /// <summary>
+        /// Sets permissions for a user to a database
+        /// </summary>
+        /// <param name="database">The database to set the permissions for</param>
+        /// <param name="username">The user to set the permissions for</param>
+        /// <param name="reader">Whether the user can read from the database</param>
+        /// <param name="writer">Whether the user can write to the database</param>
+        /// <param name="admin">Whether the user is and admin for the database</param>
+        /// <param name="creator">Whether the user is the creator of the database</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>a single string on the form ok {ok:true}</returns>
+        public IObservable<string> SetPermissions(string database, string username, bool reader = false, bool writer = false, bool admin = false, bool creator = false, string progressToken = "")
+        {
+            var withoutProtocol = BaseUrl.Replace("https://", "");            
+            var account = withoutProtocol.Substring(0,withoutProtocol.IndexOf('.'));
+            string rolesString = "database=" + account + "/" + database + "&username=" + username;
+            if (reader)
+                rolesString += "&roles=_reader";
+            if (writer)
+                rolesString += "&roles=_writer";
+            if (admin)
+                rolesString += "&roles=_admin";
+            if (creator)
+                rolesString += "&roles=_creator";
+            using (var client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));                
+                return client.UploadStringAsObservable(new Uri("https://cloudant.com/api/set_permissions"), "POST", rolesString, Username, Password, progressToken);
+            }            
+        }
+
         #endregion
 
         #region Helpers
-        
-        internal string SetQueryParameters(string key, string startKey, string endKey, bool includeDocs)
+
+        internal string SetQueryParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit)
         {
             var returnValue = string.Empty;
+            string include = string.Empty;
+            string s = string.Empty;
+            string l = string.Empty;
+            string docs = string.Empty;
+            string desc = string.Empty;
+            if (inclusiveend)
+                include = "inclusive_end=true";
+            if (skip > 0)
+                s = "skip=" + skip;
+            if (limit > 0)
+                l = "limit=" + limit;
+            if(includeDocs)
+                docs = "include_docs=true";
+            if (descending)
+                desc = "descending=true";
             var keys = CreateKeyQuery(key, startKey, endKey);
-            if (!string.IsNullOrWhiteSpace(key) || !string.IsNullOrWhiteSpace(startKey) || !string.IsNullOrWhiteSpace(endKey) || includeDocs)
-                returnValue += "?";
-            if (includeDocs && !string.IsNullOrWhiteSpace(keys))
-                returnValue += "include_docs=true&" + keys;
-            else if(includeDocs)
-                returnValue += "include_docs=true";
-            else
-                returnValue += keys;
+            string parameters = string.Join("&", new List<string>{ include, s, l, docs }).Trim('&');
+            parameters = string.Join("&", new List<string> { parameters, keys }).Trim('&');
+            if(!string.IsNullOrWhiteSpace(parameters) )
+                returnValue += "?"+parameters;
             return returnValue;
         }
 

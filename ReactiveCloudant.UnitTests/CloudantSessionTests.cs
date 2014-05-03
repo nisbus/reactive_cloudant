@@ -8,6 +8,8 @@ namespace ReactiveCloudant.UnitTests
     [TestClass]
     public class CloudantSessionTests
     {
+        string CloudantAccount = "nisbus";
+
         [TestMethod]
         [TestCategory("Constructor")]
         [ExpectedException(typeof(UriFormatException))]
@@ -128,7 +130,7 @@ namespace ReactiveCloudant.UnitTests
         public void AllNullReturnsNullWhenSettingQueryParameters()
         {
             var session = new CloudantSession("https://cloudant.com");
-            Assert.AreEqual(string.Empty,session.SetQueryParameters(null, null,null,false));
+            Assert.AreEqual(string.Empty, session.SetQueryParameters(null, null, null, false, false, false, 0, 0));
         }
 
         [TestMethod]
@@ -137,7 +139,7 @@ namespace ReactiveCloudant.UnitTests
         public void KeyAndStartKeyAreMutuallyExclusive()
         {
             var session = new CloudantSession("https://cloudant.com");
-            session.SetQueryParameters("key", "startkey", null, false);
+            session.SetQueryParameters("key", "startkey", null, false, false, false, 0, 0);
         }
 
         [TestMethod]
@@ -145,7 +147,7 @@ namespace ReactiveCloudant.UnitTests
         public void QueryParameterSetKeyOnlyTest()
         {
             var session = new CloudantSession("https://cloudant.com");
-            Assert.AreEqual("?key=\"key\"", session.SetQueryParameters("key", "", null, false));
+            Assert.AreEqual("?key=\"key\"", session.SetQueryParameters("key", "", null, false, false, false, 0, 0));
         }
 
         [TestMethod]
@@ -153,7 +155,7 @@ namespace ReactiveCloudant.UnitTests
         public void QueryParameterSetStartAndEndKeyTest()
         {
             var session = new CloudantSession("https://cloudant.com");
-            Assert.AreEqual("?startkey=\"start\"&endkey=\"end\"", session.SetQueryParameters("", "start", "end", false));
+            Assert.AreEqual("?startkey=\"start\"&endkey=\"end\"", session.SetQueryParameters("", "start", "end", false, false, false, 0, 0));
         }
 
         [TestMethod]
@@ -161,7 +163,7 @@ namespace ReactiveCloudant.UnitTests
         public void QueryParameterSetIncludeDocsOnly()
         {
             var session = new CloudantSession("https://cloudant.com");
-            Assert.AreEqual("?include_docs=true", session.SetQueryParameters("", "", "", true));
+            Assert.AreEqual("?include_docs=true", session.SetQueryParameters("", "", "", true, false, false, 0, 0));
         }
 
         [TestMethod]
@@ -169,7 +171,7 @@ namespace ReactiveCloudant.UnitTests
         public void QueryParameterSetIncludeDocsAndKeys()
         {
             var session = new CloudantSession("https://cloudant.com");
-            Assert.AreEqual("?include_docs=true&startkey=\"start\"&endkey=\"end\"", session.SetQueryParameters("", "start", "end", true));
+            Assert.AreEqual("?include_docs=true&startkey=\"start\"&endkey=\"end\"", session.SetQueryParameters("", "start", "end", true, false, false, 0, 0));
         }
 
         [TestMethod]
@@ -178,7 +180,7 @@ namespace ReactiveCloudant.UnitTests
         public void KeyQueryExceptionWithEndKeyOnly()
         {
             var session = new CloudantSession("https://cloudant.com");
-            session.SetQueryParameters("", "", "end", true);
+            session.SetQueryParameters("", "", "end", true, false, false, 0, 0);
         }
 
         [TestMethod]
@@ -186,9 +188,7 @@ namespace ReactiveCloudant.UnitTests
         public void KeyQueryStartKeyOnly()
         {
             var session = new CloudantSession("https://cloudant.com");
-            Assert.AreEqual("?startkey=\"start\"", session.SetQueryParameters("", "start", "", false));
+            Assert.AreEqual("?startkey=\"start\"", session.SetQueryParameters("", "start", "", false, false, false, 0, 0));
         }
-
-
     }
 }
