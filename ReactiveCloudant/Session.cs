@@ -69,7 +69,7 @@ namespace ReactiveCloudant
 
         #endregion
 
-        #region API
+        #region Document API
         
         /// <summary>
         /// Saves an object to the database
@@ -187,6 +187,10 @@ namespace ReactiveCloudant
             }
         }
 
+        #endregion
+
+        #region Admin API
+
         /// <summary>
         /// Creates a new api key
         /// </summary>
@@ -250,7 +254,32 @@ namespace ReactiveCloudant
             }            
         }
 
+        public IObservable<string> CreateDatabase(string database, string progressToken = "")
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database to create");
+            var url = BaseUrl + database + "/";
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.UploadStringAsObservable(new Uri(url), "PUT", "", Username, Password);
+            }
+        }
+
+        public IObservable<string> DeleteDatabase(string database, string progressToken = "")
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database to delete");
+            var url = BaseUrl + database + "/";
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
+            }
+        }
+
         #endregion
+        
 
         #region Helpers
 
