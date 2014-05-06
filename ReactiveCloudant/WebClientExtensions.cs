@@ -14,6 +14,104 @@ namespace ReactiveCloudant
 {
     internal static class WebClientExtensions
     {
+        internal static IObservable<byte[]> DownloadAttachment(this WebClient client, Uri address, string contentType = "text/plain",string username = "", string password = "")
+        {
+            return Observable.Create<byte[]>(observer =>
+            {
+                DownloadDataCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {
+                            observer.OnNext(args.Result);
+                            observer.OnCompleted();
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+
+                client.DownloadDataCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, contentType);
+                    client.DownloadDataAsync(address);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.DownloadDataCompleted -= handler;
+            });
+        }
+
+        internal static IObservable<Attachment> Attachments(this WebClient client, Uri address, string username = "", string password = "")
+        {
+            return Observable.Create<Attachment>(observer =>
+            {
+                DownloadStringCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {
+                            var parsed = JObject.Parse(args.Result);
+                            var attachments = parsed.Property("_attachments");
+                            if (attachments != null)
+                            {
+                                foreach (JProperty o in attachments.Value)
+                                {
+                                    Attachment value = new Attachment();
+                                    value.Name = o.Name;                                    
+                                    value.ContentType = o.Value["content_type"].ToString();
+                                    int l = 0;
+                                    if (Int32.TryParse(o.Value["length"].ToString(), out l))
+                                        value.Length = l;
+                                    value.Digest = o.Value["digest"].ToString();
+                                    value.Url = address.AbsoluteUri+"/" + value.Name;                                   
+                                    observer.OnNext(value);
+                               }
+                            }
+                            observer.OnCompleted();
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+
+                client.DownloadStringCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                    client.DownloadStringAsync(address);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.DownloadStringCompleted -= handler;
+            });
+        }
+
         internal static IObservable<T> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
         {
             return Observable.Create<T>(observer =>
@@ -129,6 +227,49 @@ namespace ReactiveCloudant
                 }
 
                 return () => client.UploadStringCompleted -= handler;
+            });
+        }
+
+        internal static IObservable<byte[]> UploadDataAsObservable(this WebClient client, Uri address, string contentType, string method, byte[] data, string username = "", string password = "", object userToken = null)
+        {
+            return Observable.Create<byte[]>(observer =>
+            {
+                UploadDataCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.UserState != userToken) return;
+
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {
+                            observer.OnNext(args.Result);
+                            observer.OnCompleted();
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+
+                client.UploadDataCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, contentType);
+                    client.UploadDataAsync(address, method, data, userToken);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.UploadDataCompleted -= handler;
             });
         }
 

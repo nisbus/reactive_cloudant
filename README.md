@@ -9,12 +9,12 @@ The queries support key, startkey/endkey, inclusive_end, include_docs, skip/limi
 **Basic document management**  
 	- Add support for lists and shows.  
 	- Add listening to the changes feed.  
-	- Add attachment support (also for inline attachments).  
+	- ~~Add attachment support (also for inline attachments).~~  
 	- Add bulk document operations.  
 	
 **Administration**  
-	- Delete database  
-	- Create database  
+	- ~~Delete database~~  
+	- ~~Create database~~  
 	- ~~Create API keys.~~  
 	- ~~Grant/Revoke access to database.~~  
 

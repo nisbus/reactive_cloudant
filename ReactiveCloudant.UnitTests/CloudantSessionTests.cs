@@ -1,5 +1,7 @@
 ﻿using System;
+using System.IO;
 using System.Net;
+using System.Text;
 using Microsoft.QualityTools.Testing.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -8,8 +10,6 @@ namespace ReactiveCloudant.UnitTests
     [TestClass]
     public class CloudantSessionTests
     {
-        string CloudantAccount = "nisbus";
-
         [TestMethod]
         [TestCategory("Constructor")]
         [ExpectedException(typeof(UriFormatException))]

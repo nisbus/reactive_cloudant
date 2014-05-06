@@ -79,9 +79,9 @@ namespace ReactiveCloudant
         /// <param name="id">The id to save the object as (optional)</param>
         /// <param name="revision_id">The revision id of the document if updating (you also need the id if you are setting the revision id)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
-        /// <returns>A successful save operation will send two strings to the returned stream, the first is the ID of the new document and the second is the revision number</returns>
+        /// <returns>A successful save operation will return a single SaveResult object containing the ID and REV of the document</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<SaveDocumentResult> Save(string database, object item, string id = "", string revision_id = "", string progressToken = "")
+        public IObservable<SaveResult> Save(string database, object item, string id = "", string revision_id = "", string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database to save to");
@@ -93,7 +93,7 @@ namespace ReactiveCloudant
             json = SetID(json, id);
             if (!string.IsNullOrWhiteSpace(revision_id))
                 json = SetRev(json, revision_id);
-            Subject<SaveDocumentResult> saveResult = new Subject<SaveDocumentResult>();
+            Subject<SaveResult> saveResult = new Subject<SaveResult>();
             using (WebClient client = new WebClient())
             {
                 client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
@@ -117,7 +117,7 @@ namespace ReactiveCloudant
                                 JValue val = revision.Value as JValue;
                                 rev_id = val.Value.ToString();
                             }
-                            saveResult.OnNext(new SaveDocumentResult(doc_id, rev_id));
+                            saveResult.OnNext(new SaveResult(doc_id, rev_id));
                         }
                         catch (Exception e) 
                         { 
@@ -127,8 +127,75 @@ namespace ReactiveCloudant
                     () => saveResult.OnCompleted());
                 return saveResult.AsObservable();
             }
-        }        
-        
+        }
+
+        /// <summary>
+        /// Saves an attachment with a document
+        /// </summary>
+        /// <param name="database">The database to save to</param>
+        /// <param name="document_id">The id of the document to attach to (if it doesn't exist it will be created)</param>
+        /// <param name="contentType">The content type of the attachment</param>
+        /// <param name="attachment">The attachment as bytes</param>
+        /// <param name="attachmentName">The name to give the attachment</param>
+        /// <param name="revision_id">If updating an existing document the revision id needs to be set</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A successful save operation will return a single SaveResult object containing the ID and REV of the document</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<SaveResult> SaveAttachment(string database, string document_id, string contentType, byte[] attachment, string attachmentName = "", string revision_id = "", string progressToken = "")
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database to save to");
+            if (attachment == null)
+                throw new ArgumentException("Cannot save null attachments");
+            if(string.IsNullOrWhiteSpace(document_id))
+                throw new ArgumentException("You must specify a document ID for the attachment");
+            if(string.IsNullOrWhiteSpace(attachmentName))
+                throw new ArgumentException("You must specify an attachment name");
+            var url = BaseUrl + database + "/"+document_id+"/"+attachmentName;
+
+
+            if (!string.IsNullOrWhiteSpace(revision_id))
+                url += "?rev=" + revision_id;
+            
+            Subject<SaveResult> saveResult = new Subject<SaveResult>();
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                client.UploadDataAsObservable(new Uri(url), contentType, "PUT", attachment, Username, Password).Subscribe(s =>
+                {
+                    try
+                    {                        
+                        var result = Encoding.UTF8.GetString(s);                                                
+                        string doc_id = string.Empty;
+                        string rev_id = string.Empty;
+                        var response = JObject.Parse(result);
+                        var idProp = response.Property("id");
+                        if (idProp != null)
+                        {
+                            JValue val = idProp.Value as JValue;
+                            doc_id = idProp.Value.ToString();
+                        }
+
+                        var revision = response.Property("rev");
+                        if (revision != null)
+                        {
+                            JValue val = revision.Value as JValue;
+                            rev_id = val.Value.ToString();
+                        }
+                        saveResult.OnNext(new SaveResult(doc_id, rev_id));
+                        saveResult.OnCompleted();
+                    }
+                    catch (Exception e)
+                    {
+                        saveResult.OnError(e);
+                    }
+                }, (e) => saveResult.OnError(e),
+                    () => saveResult.OnCompleted());
+                return saveResult.AsObservable();
+            }
+
+        }
+
         /// <summary>
         /// Calls a view in the database
         /// </summary>
@@ -184,6 +251,27 @@ namespace ReactiveCloudant
             {                    
                 client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
                 return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            }
+        }
+
+        /// <summary>
+        /// returns all the attachments of a document, i.e. their names, size, type etc.
+        /// </summary>
+        /// <param name="document_id">The id of the document to search for attachments on</param>
+        /// <param name="database">The database the document is in</param>
+        /// <returns cref="Attachment">An attachment which you can then query for it's actual data</returns>
+        public IObservable<Attachment> Attachments(string document_id, string database)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database");
+
+            if (string.IsNullOrWhiteSpace(document_id))
+                throw new ArgumentException("documentID cannot be empty");
+            var url = BaseUrl + database + "/";
+            url += document_id;
+            using (WebClient client = new WebClient())
+            {             
+                return client.Attachments(new Uri(url), Username, Password);
             }
         }
 
@@ -280,7 +368,6 @@ namespace ReactiveCloudant
 
         #endregion
         
-
         #region Helpers
 
         internal string SetQueryParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit)
