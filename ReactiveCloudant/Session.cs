@@ -94,6 +94,7 @@ namespace ReactiveCloudant
             if (!string.IsNullOrWhiteSpace(revision_id))
                 json = SetRev(json, revision_id);
             Subject<SaveResult> saveResult = new Subject<SaveResult>();
+            
             using (WebClient client = new WebClient())
             {
                 client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
@@ -211,7 +212,7 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<T> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "")
+        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database","database");
@@ -221,6 +222,10 @@ namespace ReactiveCloudant
                 throw new ArgumentException("You must specify a view name", "view");
             var url = BaseUrl +database+"/_design/"+designdocument+"/_view/"+ view;
             url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            if (url.Contains("?"))
+                url += "&stale=ok";
+            else
+                url += "?stale=ok";
             using (WebClient client = new WebClient())
             {
                 client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
@@ -238,7 +243,7 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>An observable sequence that will only send one item</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<T> Document<T>(string document_id, string database, IScheduler converterScheduler = null, string progressToken = "")
+        public IObservable<Document<T>> Document<T>(string document_id, string database, IScheduler converterScheduler = null, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database");
@@ -246,7 +251,7 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(document_id))
                 throw new ArgumentException("documentID cannot be empty");
             var url = BaseUrl+database+"/";
-            url += document_id;
+            url += document_id+"?stale=ok";
             using (WebClient client = new WebClient())
             {                    
                 client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
@@ -268,10 +273,25 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(document_id))
                 throw new ArgumentException("documentID cannot be empty");
             var url = BaseUrl + database + "/";
-            url += document_id;
+            url += document_id+"?stale=ok";
             using (WebClient client = new WebClient())
             {             
                 return client.Attachments(new Uri(url), Username, Password);
+            }
+        }
+
+        public IObservable<string> DeleteDocument(string document_id, string database, string progressToken = "")
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database to delete");
+            if (string.IsNullOrWhiteSpace(document_id))
+                throw new ArgumentException("You must specify a document id to delete");
+
+            var url = BaseUrl + database + "/"+document_id;
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
             }
         }
 

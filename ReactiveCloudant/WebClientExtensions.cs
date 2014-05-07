@@ -82,7 +82,7 @@ namespace ReactiveCloudant
                                     if (Int32.TryParse(o.Value["length"].ToString(), out l))
                                         value.Length = l;
                                     value.Digest = o.Value["digest"].ToString();
-                                    value.Url = address.AbsoluteUri+"/" + value.Name;                                   
+                                    value.Url = address.AbsoluteUri.Replace("?stale=ok","")+"/" + value.Name;                                   
                                     observer.OnNext(value);
                                }
                             }
@@ -112,9 +112,9 @@ namespace ReactiveCloudant
             });
         }
 
-        internal static IObservable<T> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
+        internal static IObservable<Document<T>> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
         {
-            return Observable.Create<T>(observer =>
+            return Observable.Create<Document<T>>(observer =>
             {
                 DownloadStringCompletedEventHandler handler = (sender, args) =>
                 {
@@ -136,32 +136,74 @@ namespace ReactiveCloudant
                                 var first = rows.Value.FirstOrDefault(x => x.SelectToken("doc") != null);
                                 if (first != null)
                                     getDoc = true;
-                                foreach (JObject o in rows.Value)
+                                
+                                if (converterScheduler != null)
                                 {
-                                    T value = default(T);
-                                    if (converterScheduler != null)
+                                    converterScheduler.Schedule(() =>
                                     {
-                                        converterScheduler.Schedule(() =>
+                                        foreach (JObject o in rows.Value)
                                         {
+                                            string id = string.Empty;
+                                            string rev = string.Empty;
+                                            if (getDoc)
+                                            {
+                                                id = o["doc"]["_id"].ToString();
+                                                rev = o["doc"]["_rev"].ToString();
+                                            }
+                                            else
+                                            {
+                                                id = o["value"]["_id"].ToString();
+                                                rev = o["value"]["_rev"].ToString();
+                                            }
+                                            T value = default(T);
                                             value = o.ConvertObject<T>(getDoc);
-                                            observer.OnNext(value);
-                                        });
-                                    }
-                                    else
+
+                                            observer.OnNext(new Document<T>(id, value, rev));
+                                        }
+                                        observer.OnCompleted();
+                                    });
+                                }
+                                else
+                                {
+                                    foreach (JObject o in rows.Value)
                                     {
+                                        string id = string.Empty;
+                                        string rev = string.Empty;
+                                        if (getDoc)
+                                        {
+                                            id = o["doc"]["_id"].ToString();
+                                            rev = o["doc"]["_rev"].ToString();
+                                        }
+                                        else
+                                        {
+                                            id = o["value"]["_id"].ToString();
+                                            rev = o["value"]["_rev"].ToString();
+                                        }
+                                        T value = default(T);
                                         value = o.ConvertObject<T>(getDoc);
-                                        observer.OnNext(value);
+                                        observer.OnNext(new Document<T>(id, value, rev));
                                     }
+                                    observer.OnCompleted();
                                 }
                             }
                             else
                             {
+                                var id = parsed["_id"].ToString();
+                                var rev = parsed["_rev"].ToString();
+
                                 if (converterScheduler != null)
-                                    converterScheduler.Schedule(() => observer.OnNext(parsed.ToObject<T>()));                                        
+                                    converterScheduler.Schedule(() =>
+                                        {
+                                            observer.OnNext(new Document<T>(id,parsed.ToObject<T>(),rev));
+                                            observer.OnCompleted();
+                                        });
                                 else
-                                    observer.OnNext(parsed.ToObject<T>());
+                                {
+                                    observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
+                                    observer.OnCompleted();
+                                }
                             }
-                            observer.OnCompleted();
+                            
                         }
                         catch (Exception ex)
                         {
@@ -303,7 +345,16 @@ namespace ReactiveCloudant
             {
                 var prop = obj.Property("value");
                 if (prop != null)
-                    return prop.Value.Value<T>();
+                {
+                    if (prop.Value is JObject)
+                    {
+                        return ((JObject)prop.Value).ToObject<T>();
+                    }
+                    else
+                    {
+                        return prop.Value.Value<T>();
+                    }
+                }
                 else
                     return obj.Values().Value<T>();
             }
