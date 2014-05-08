@@ -11,8 +11,8 @@ The queries support key, startkey/endkey, inclusive_end, include_docs, skip/limi
 	- Add listening to the changes feed.  
 	- ~~Add attachment support (also for inline attachments).~~  
 	- Add bulk document operations.  
-	- ~~Delete document.~~
-	- 
+	- ~~Delete document.~~  
+  	
 **Administration**  
 	- ~~Delete database~~  
 	- ~~Create database~~  
