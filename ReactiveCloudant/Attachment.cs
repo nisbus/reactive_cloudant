@@ -19,7 +19,9 @@ namespace ReactiveCloudant
         {
             using (var client = new WebClient())
             {
-                return client.DownloadAttachment(new Uri(Url+"?stale=ok"), ContentType, username, password);
+                Uri url = new Uri(Url);
+                var u = url.AbsoluteUri + Name;
+                return client.DownloadAttachment(new Uri(u), ContentType, username, password);
             }
         }
     }

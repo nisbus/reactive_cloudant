@@ -55,7 +55,7 @@ namespace ReactiveCloudant
             });
         }
 
-        internal static IObservable<Attachment> Attachments(this WebClient client, Uri address, string username = "", string password = "")
+        internal static IObservable<Attachment> Attachments(this WebClient client, Uri address, string username = "", string password = "", bool staleok=true)
         {
             return Observable.Create<Attachment>(observer =>
             {
@@ -82,7 +82,9 @@ namespace ReactiveCloudant
                                     if (Int32.TryParse(o.Value["length"].ToString(), out l))
                                         value.Length = l;
                                     value.Digest = o.Value["digest"].ToString();
-                                    value.Url = address.AbsoluteUri.Replace("?stale=ok","")+"/" + value.Name;                                   
+                                    value.Url = address.AbsoluteUri.Replace("?stale=ok", "") + "/" + value.Name;
+                                    if (staleok)
+                                        value.Url += "?stale=ok";
                                     observer.OnNext(value);
                                }
                             }
@@ -229,6 +231,74 @@ namespace ReactiveCloudant
             });
         }
 
+        internal static IObservable<string> UploadStringAsObservable(Uri address, string method, string data, string username = "", string password = "", object userToken = null)
+        {
+            return Observable.Create<string>(observer =>
+            {
+                HttpWebRequest request = WebRequest.Create(address) as HttpWebRequest;
+                request.ContentType = "application/json";
+                request.ContinueTimeout = 10000;
+                request.KeepAlive = false;
+                request.Method = method;
+                if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                {
+                    var authInfo = username + ":" + password;
+                    request.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));
+                }
+                var buffer = Encoding.UTF8.GetBytes(data);
+                
+                request.GetRequestStream().WriteAsync(buffer, 0, buffer.Length).ContinueWith(async res =>
+                    {
+                        await res;
+                        if (res.IsFaulted)
+                            observer.OnError(res.Exception);
+                        else if (res.IsCanceled)
+                            observer.OnCompleted();
+                        else if (res.IsCompleted)
+                        {                                                     
+                        }
+                    });
+                return () => { };
+                /*
+                UploadStringCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.UserState != userToken) return;
+
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {
+                            observer.OnNext(args.Result);
+                            observer.OnCompleted();
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+                */
+                //client.UploadStringCompleted += handler;
+                //try
+                //{
+                //    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                //        client.SetAuthenticationHeaders(username, password);
+                //    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                //    client.UploadStringAsync(address, method, data, userToken);
+                //}
+                //catch (Exception ex)
+                //{
+                //    observer.OnError(ex);
+                //}
+
+                //return () => client.UploadStringCompleted -= handler;
+            });
+        }
+
         internal static IObservable<string> UploadStringAsObservable(this WebClient client, Uri address, string method, string data, string username = "", string password = "", object userToken = null)
         {
             return Observable.Create<string>(observer =>
@@ -259,7 +329,7 @@ namespace ReactiveCloudant
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                        client.SetAuthenticationHeaders(username, password);
+                        client.SetAuthenticationHeaders(username, password);                    
                     client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
                     client.UploadStringAsync(address, method, data, userToken);
                 }
