@@ -311,58 +311,55 @@ namespace ReactiveCloudant
             }
         }
 
-        public IObservable<Document<T>> Changes<T>(string database, FeedType feed_type, IList<string> document_ids = null, string filter = null, bool include_docs = false, int? heartbeat = null, int? limit = null, string since = null, int? timeout = null, bool descending = false, IScheduler convererScheduler = null)
+        public IObservable<Document<T>> Changes<T>(string database, IList<string> document_ids = null, string filter = null, bool include_docs = false, int? heartbeat = null, int? limit = null, string since = null, int? timeout = null, bool descending = false, IScheduler convererScheduler = null)
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database for the feed");
-            var url = BaseUrl + database+"/_changes/" + ParseChangesParameters(feed_type, heartbeat, limit, since, timeout, descending, filter, include_docs, document_ids);
-            using (WebClient client = new WebClient())
-            {
-                Subject<Document<T>> outer = new Subject<Document<T>>();
-                Poll<T>(since, include_docs, convererScheduler, url, client, outer);
-                return outer.AsObservable();                
-            }
+            var url = BaseUrl + database+"/_changes" + ParseChangesParameters(heartbeat, limit, since, timeout, descending, filter, include_docs, document_ids);
+            Subject<Document<T>> outer = new Subject<Document<T>>();
+            Poll<T>(since, include_docs, convererScheduler, url, outer);
+            return outer.AsObservable();                
         }
 
-        private void Poll<T>(string since, bool include_docs, IScheduler convererScheduler, string url, WebClient client, Subject<Document<T>> outer)
+        private void Poll<T>(string since, bool include_docs, IScheduler convererScheduler, string url, Subject<Document<T>> outer)
         {
             string last = since;
             var inner = Observable.Create<Document<T>>(observer =>
             {
-                client.DownloadAndConvertChangesAsObservable<T>(new Uri(url), Username, Password, converterScheduler: convererScheduler, includes_docs: include_docs)
+                WebClientExtensions.DownloadAndConvertChangesAsObservable<T>(new Uri(url), Username, Password, converterScheduler: convererScheduler, includes_docs: include_docs)
                     .Subscribe((data) =>
                     {
                         last = data.Since;
                         outer.OnNext(data.Document);
                     },
                     (e) => outer.OnError(e),
-                    () =>
-                        {
-                            if (!string.IsNullOrWhiteSpace(last) && url.Contains("&since="))
-                            {
-                                var startidx = url.IndexOf("&since=");
-                                var endidx = url.IndexOf("&", startidx + "&since=".Length);
-                                if (endidx == -1)
-                                {
-                                    url = url.Remove(startidx)+"&since="+last;
-                                }
-                                else
-                                {
-                                    url = url.Remove(startidx, endidx - startidx) + "&since="+last;
-                                }
-                            }
-                            else if(!string.IsNullOrWhiteSpace(last))
-                                url += "&since=" + last;
-                            Poll<T>(last, include_docs, convererScheduler, url, client, outer);
-                        });
+                    () => {});
+                        //{
+                        //    if (!string.IsNullOrWhiteSpace(last) && url.Contains("&since="))
+                        //    {
+                        //        var startidx = url.IndexOf("&since=");
+                        //        var endidx = url.IndexOf("&", startidx + "&since=".Length);
+                        //        if (endidx == -1)
+                        //        {
+                        //            url = url.Remove(startidx)+"&since="+last;
+                        //        }
+                        //        else
+                        //        {
+                        //            url = url.Remove(startidx, endidx - startidx) + "&since="+last;
+                        //        }
+                        //    }
+                        //    else if(!string.IsNullOrWhiteSpace(last))
+                        //        url += "&since=" + last;
+                        //    Poll<T>(last, include_docs, convererScheduler, url, client, outer);
+                        //});
                 return () => { };
             });
             inner.Subscribe(_ => { }, (e) => outer.OnError(e));
         }
 
-        private string ParseChangesParameters(FeedType feed_type, int? heartbeat, int? limit, string since, int? timeout, bool descending, string filter, bool include_docs, IList<string> document_ids)
+        private string ParseChangesParameters(int? heartbeat, int? limit, string since, int? timeout, bool descending, string filter, bool include_docs, IList<string> document_ids)
         {           
-            string returnValue = GetFeedType(feed_type);
+            string returnValue = "?feed=continuous";
             returnValue += heartbeat.HasValue ? "&heartbeat=" + heartbeat.ToString() : string.Empty;
             returnValue += limit.HasValue ? "&limit="+limit.ToString() : string.Empty;
             returnValue += !string.IsNullOrWhiteSpace(since) ? "&since=" + since : string.Empty;            
@@ -381,6 +378,7 @@ namespace ReactiveCloudant
                     returnValue = returnValue.TrimEnd(new char[]{','});
                 returnValue += "]";
             }
+            
             return returnValue;
         }
 
@@ -478,19 +476,6 @@ namespace ReactiveCloudant
         #endregion
         
         #region Helpers
-
-        internal string GetFeedType(FeedType feed_type)
-        {
-            switch (feed_type)
-            {                                
-                case FeedType.longpoll:
-                    return "?feed_type=longpoll";
-                case FeedType.continuous:
-                    return "?feed_type=continuous";
-                default:
-                    return "?feed_type=normal";
-            }
-        }
 
         internal string SetQueryParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit)
         {

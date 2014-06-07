@@ -61,7 +61,6 @@
     <Compile Include="APIKey.cs" />
     <Compile Include="Attachment.cs" />
     <Compile Include="Document.cs" />
-    <Compile Include="FeedType.cs" />
     <Compile Include="Poll.cs" />
     <Compile Include="SaveResult.cs" />
     <Compile Include="Session.cs" />

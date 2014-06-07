@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Subjects;
+using System.IO;
 
 namespace ReactiveCloudant
 {
@@ -231,194 +232,83 @@ namespace ReactiveCloudant
             });
         }
 
-        internal static IObservable<Poll<T>> DownloadAndConvertChangesAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null, bool includes_docs = false)
+        internal static IObservable<Poll<T>> DownloadAndConvertChangesAsObservable<T>(Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null, bool includes_docs = false)
         {
             return Observable.Create<Poll<T>>(observer =>
             {
-                DownloadStringCompletedEventHandler handler = (sender, args) =>
-                {
-                    if (args.UserState != userToken) return;
-
-                    if (args.Cancelled)
-                        observer.OnCompleted();
-                    else if (args.Error != null)
-                        observer.OnError(args.Error);
-                    else
-                    {
-                        try
-                        {
-                            var parsed = JObject.Parse(args.Result);
-
-                            var results = parsed["results"] as JArray;
-                            var seq_id = parsed.Property("last_seq").Value.ToString();
-                            var pending = Int32.Parse(parsed.Property("pending").Value.ToString());
-                            foreach (JObject result in results)
-                            {
-                                if (converterScheduler != null)
-                                {
-                                    converterScheduler.Schedule(() =>
-                                    {
-                                        string id = string.Empty;
-                                        string rev = string.Empty;
-                                        string seq = string.Empty;
-                                        if (includes_docs)
-                                        {
-                                            id = result["id"].ToString();
-                                            seq = result["seq"].ToString();
-                                            var revisions = result["changes"] as JArray;
-                                            if (revisions != null && revisions.Count > 0)
-                                            {
-                                                rev = revisions.Last()["rev"].ToString();
-                                            }
-                                        }
-                                        else
-                                        {
-                                            id = result["id"].ToString();
-                                            seq = result["seq"].ToString();
-                                            var revisions = result["changes"] as JArray;
-                                            if (revisions != null && revisions.Count > 0)
-                                            {
-                                                rev = revisions.Last()["rev"].ToString();
-                                            }
-                                        }
-                                        T value = default(T);
-                                        value = result.ConvertObject<T>(includes_docs);
-
-                                        observer.OnNext(new Poll<T>{ Document = new Document<T>(id, value, rev), Since=seq});
-                                    });
-                                }
-                                else
-                                {
-                                    string id = string.Empty;
-                                    string rev = string.Empty;
-                                    string seq = string.Empty;
-                                    if (includes_docs)
-                                    {
-                                        id = result["id"].ToString();
-                                        seq = result["seq"].ToString();
-                                        var revisions = result["changes"] as JArray;
-                                        if (revisions != null && revisions.Count > 0)
-                                        {
-                                            rev = revisions.Last()["rev"].ToString();
-                                        }
-                                    }
-                                    else
-                                    {
-                                        id = result["id"].ToString();
-                                        seq = result["seq"].ToString();
-                                        var revisions = result["changes"] as JArray;
-                                        if (revisions != null && revisions.Count > 0)
-                                        {
-                                            rev = revisions.Last()["rev"].ToString();
-                                        }
-                                    }
-                                    T value = default(T);
-                                    value = result.ConvertObject<T>(includes_docs);
-                                    observer.OnNext(new Poll<T> { Document = new Document<T>(id, value, rev) , Since = seq});
-                                }
-                            }
-                            /*
-                            }
-                            
-                            if (results != null)
-                            {
-                                var first = rows.Value.FirstOrDefault(x => x.SelectToken("doc") != null);
-                                if (first != null)
-                                    getDoc = true;
-
-                                if (converterScheduler != null)
-                                {
-                                    converterScheduler.Schedule(() =>
-                                    {
-                                        foreach (JObject o in rows.Value)
-                                        {
-                                            string id = string.Empty;
-                                            string rev = string.Empty;
-                                            if (getDoc)
-                                            {
-                                                id = o["doc"]["_id"].ToString();
-                                                rev = o["doc"]["_rev"].ToString();
-                                            }
-                                            else
-                                            {
-                                                id = o["value"]["_id"].ToString();
-                                                rev = o["value"]["_rev"].ToString();
-                                            }
-                                            T value = default(T);
-                                            value = o.ConvertObject<T>(getDoc);
-
-                                            observer.OnNext(new Document<T>(id, value, rev));
-                                        }
-                                        observer.OnCompleted();
-                                    });
-                                }
-                                else
-                                {
-                                    foreach (JObject o in rows.Value)
-                                    {
-                                        string id = string.Empty;
-                                        string rev = string.Empty;
-                                        if (getDoc)
-                                        {
-                                            id = o["doc"]["_id"].ToString();
-                                            rev = o["doc"]["_rev"].ToString();
-                                        }
-                                        else
-                                        {
-                                            id = o["value"]["_id"].ToString();
-                                            rev = o["value"]["_rev"].ToString();
-                                        }
-                                        T value = default(T);
-                                        value = o.ConvertObject<T>(getDoc);
-                                        observer.OnNext(new Document<T>(id, value, rev));
-                                    }
-                                    observer.OnCompleted();
-                                }
-                            }
-                            else
-                            {
-                                var id = parsed["_id"].ToString();
-                                var rev = parsed["_rev"].ToString();
-
-                                if (converterScheduler != null)
-                                    converterScheduler.Schedule(() =>
-                                    {
-                                        observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
-                                        observer.OnCompleted();
-                                    });
-                                else
-                                {
-                                    observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
-                                    observer.OnCompleted();
-                                }
-                            }
-                            */
-                        }
-                        catch (Exception ex)
-                        {
-                            observer.OnError(ex);
-                        }
-                        finally
-                        {
-                            observer.OnCompleted();
-                        }
-                    }
-                };
-
-                client.DownloadStringCompleted += handler;
+                bool disposed = false;
                 try
-                {
-                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                        client.SetAuthenticationHeaders(username, password);
-                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
-                    client.DownloadStringAsync(address, userToken);
+                {                    
+                    Task.Factory.StartNew(() =>
+                        {
+                            try
+                            {
+                                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(address);
+                                req.Headers["ContentType"]= "application/json";
+                                if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                                    req.Headers["Authorization"]= "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(username + ":" + password));
+                                var response = req.GetResponse();
+                                using (var reader = new StreamReader(response.GetResponseStream()))
+                                {
+                                    string line = string.Empty;
+                                    while ((line = reader.ReadLine()) != null && !disposed)
+                                    {
+                                        try
+                                        {
+                                            if (!string.IsNullOrWhiteSpace(line))
+                                            {
+                                                var parsed = JObject.Parse(line);
+                                                var id = parsed["id"].ToString();
+                                                var seq = parsed["seq"].ToString();
+                                                var revisions = parsed["changes"] as JArray;
+                                                string rev = string.Empty;
+                                                if (revisions != null && revisions.Count > 0)
+                                                {
+                                                    rev = revisions.Last()["rev"].ToString();
+                                                }
+
+                                                if (includes_docs)
+                                                {
+                                                    if (converterScheduler != null)
+                                                    {
+                                                        converterScheduler.Schedule(() =>
+                                                            {
+                                                                var retVal = parsed.ConvertObject<T>(includes_docs);
+                                                                observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                            });
+                                                    }
+                                                    else
+                                                    {
+                                                        var retVal = parsed.ConvertObject<T>(includes_docs);
+                                                        observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    observer.OnNext(new Poll<T> { Document = new Document<T>(id, default(T), rev), Since = seq });
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            observer.OnError(ex);
+                                        }
+                                    }
+                                    observer.OnCompleted();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                observer.OnError(ex);
+                            }
+                        });
                 }
                 catch (Exception ex)
                 {
                     observer.OnError(ex);
                 }
 
-                return () => client.DownloadStringCompleted -= handler;
+                return () => { disposed = true; };
             });
         }
 
