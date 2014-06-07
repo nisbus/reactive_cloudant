@@ -190,5 +190,10 @@ namespace ReactiveCloudant.UnitTests
             var session = new CloudantSession("https://cloudant.com");
             Assert.AreEqual("?startkey=\"start\"", session.SetQueryParameters("", "start", "", false, false, false, 0, 0));
         }
+
+        public class TestClass
+        {
+            public string Name { get; set; }
+        }        
     }
 }

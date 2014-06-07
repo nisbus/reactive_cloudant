@@ -231,36 +231,11 @@ namespace ReactiveCloudant
             });
         }
 
-        internal static IObservable<string> UploadStringAsObservable(Uri address, string method, string data, string username = "", string password = "", object userToken = null)
+        internal static IObservable<Poll<T>> DownloadAndConvertChangesAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null, bool includes_docs = false)
         {
-            return Observable.Create<string>(observer =>
+            return Observable.Create<Poll<T>>(observer =>
             {
-                HttpWebRequest request = WebRequest.Create(address) as HttpWebRequest;
-                request.ContentType = "application/json";
-                request.ContinueTimeout = 10000;
-                request.KeepAlive = false;
-                request.Method = method;
-                if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                {
-                    var authInfo = username + ":" + password;
-                    request.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));
-                }
-                var buffer = Encoding.UTF8.GetBytes(data);
-                
-                request.GetRequestStream().WriteAsync(buffer, 0, buffer.Length).ContinueWith(async res =>
-                    {
-                        await res;
-                        if (res.IsFaulted)
-                            observer.OnError(res.Exception);
-                        else if (res.IsCanceled)
-                            observer.OnCompleted();
-                        else if (res.IsCompleted)
-                        {                                                     
-                        }
-                    });
-                return () => { };
-                /*
-                UploadStringCompletedEventHandler handler = (sender, args) =>
+                DownloadStringCompletedEventHandler handler = (sender, args) =>
                 {
                     if (args.UserState != userToken) return;
 
@@ -272,30 +247,178 @@ namespace ReactiveCloudant
                     {
                         try
                         {
-                            observer.OnNext(args.Result);
-                            observer.OnCompleted();
+                            var parsed = JObject.Parse(args.Result);
+
+                            var results = parsed["results"] as JArray;
+                            var seq_id = parsed.Property("last_seq").Value.ToString();
+                            var pending = Int32.Parse(parsed.Property("pending").Value.ToString());
+                            foreach (JObject result in results)
+                            {
+                                if (converterScheduler != null)
+                                {
+                                    converterScheduler.Schedule(() =>
+                                    {
+                                        string id = string.Empty;
+                                        string rev = string.Empty;
+                                        string seq = string.Empty;
+                                        if (includes_docs)
+                                        {
+                                            id = result["id"].ToString();
+                                            seq = result["seq"].ToString();
+                                            var revisions = result["changes"] as JArray;
+                                            if (revisions != null && revisions.Count > 0)
+                                            {
+                                                rev = revisions.Last()["rev"].ToString();
+                                            }
+                                        }
+                                        else
+                                        {
+                                            id = result["id"].ToString();
+                                            seq = result["seq"].ToString();
+                                            var revisions = result["changes"] as JArray;
+                                            if (revisions != null && revisions.Count > 0)
+                                            {
+                                                rev = revisions.Last()["rev"].ToString();
+                                            }
+                                        }
+                                        T value = default(T);
+                                        value = result.ConvertObject<T>(includes_docs);
+
+                                        observer.OnNext(new Poll<T>{ Document = new Document<T>(id, value, rev), Since=seq});
+                                    });
+                                }
+                                else
+                                {
+                                    string id = string.Empty;
+                                    string rev = string.Empty;
+                                    string seq = string.Empty;
+                                    if (includes_docs)
+                                    {
+                                        id = result["id"].ToString();
+                                        seq = result["seq"].ToString();
+                                        var revisions = result["changes"] as JArray;
+                                        if (revisions != null && revisions.Count > 0)
+                                        {
+                                            rev = revisions.Last()["rev"].ToString();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        id = result["id"].ToString();
+                                        seq = result["seq"].ToString();
+                                        var revisions = result["changes"] as JArray;
+                                        if (revisions != null && revisions.Count > 0)
+                                        {
+                                            rev = revisions.Last()["rev"].ToString();
+                                        }
+                                    }
+                                    T value = default(T);
+                                    value = result.ConvertObject<T>(includes_docs);
+                                    observer.OnNext(new Poll<T> { Document = new Document<T>(id, value, rev) , Since = seq});
+                                }
+                            }
+                            /*
+                            }
+                            
+                            if (results != null)
+                            {
+                                var first = rows.Value.FirstOrDefault(x => x.SelectToken("doc") != null);
+                                if (first != null)
+                                    getDoc = true;
+
+                                if (converterScheduler != null)
+                                {
+                                    converterScheduler.Schedule(() =>
+                                    {
+                                        foreach (JObject o in rows.Value)
+                                        {
+                                            string id = string.Empty;
+                                            string rev = string.Empty;
+                                            if (getDoc)
+                                            {
+                                                id = o["doc"]["_id"].ToString();
+                                                rev = o["doc"]["_rev"].ToString();
+                                            }
+                                            else
+                                            {
+                                                id = o["value"]["_id"].ToString();
+                                                rev = o["value"]["_rev"].ToString();
+                                            }
+                                            T value = default(T);
+                                            value = o.ConvertObject<T>(getDoc);
+
+                                            observer.OnNext(new Document<T>(id, value, rev));
+                                        }
+                                        observer.OnCompleted();
+                                    });
+                                }
+                                else
+                                {
+                                    foreach (JObject o in rows.Value)
+                                    {
+                                        string id = string.Empty;
+                                        string rev = string.Empty;
+                                        if (getDoc)
+                                        {
+                                            id = o["doc"]["_id"].ToString();
+                                            rev = o["doc"]["_rev"].ToString();
+                                        }
+                                        else
+                                        {
+                                            id = o["value"]["_id"].ToString();
+                                            rev = o["value"]["_rev"].ToString();
+                                        }
+                                        T value = default(T);
+                                        value = o.ConvertObject<T>(getDoc);
+                                        observer.OnNext(new Document<T>(id, value, rev));
+                                    }
+                                    observer.OnCompleted();
+                                }
+                            }
+                            else
+                            {
+                                var id = parsed["_id"].ToString();
+                                var rev = parsed["_rev"].ToString();
+
+                                if (converterScheduler != null)
+                                    converterScheduler.Schedule(() =>
+                                    {
+                                        observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
+                                        observer.OnCompleted();
+                                    });
+                                else
+                                {
+                                    observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
+                                    observer.OnCompleted();
+                                }
+                            }
+                            */
                         }
                         catch (Exception ex)
                         {
                             observer.OnError(ex);
                         }
+                        finally
+                        {
+                            observer.OnCompleted();
+                        }
                     }
                 };
-                */
-                //client.UploadStringCompleted += handler;
-                //try
-                //{
-                //    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                //        client.SetAuthenticationHeaders(username, password);
-                //    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
-                //    client.UploadStringAsync(address, method, data, userToken);
-                //}
-                //catch (Exception ex)
-                //{
-                //    observer.OnError(ex);
-                //}
 
-                //return () => client.UploadStringCompleted -= handler;
+                client.DownloadStringCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                    client.DownloadStringAsync(address, userToken);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.DownloadStringCompleted -= handler;
             });
         }
 
