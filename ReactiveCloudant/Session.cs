@@ -311,6 +311,77 @@ namespace ReactiveCloudant
             }
         }
 
+        public IObservable<Document<T>> Changes<T>(string database, IList<string> document_ids = null, string filter = null, bool include_docs = false, int? heartbeat = null, int? limit = null, string since = null, int? timeout = null, bool descending = false, IScheduler convererScheduler = null)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database for the feed");
+            var url = BaseUrl + database+"/_changes" + ParseChangesParameters(heartbeat, limit, since, timeout, descending, filter, include_docs, document_ids);
+            Subject<Document<T>> outer = new Subject<Document<T>>();
+            Poll<T>(since, include_docs, convererScheduler, url, outer);
+            return outer.AsObservable();                
+        }
+
+        private void Poll<T>(string since, bool include_docs, IScheduler convererScheduler, string url, Subject<Document<T>> outer)
+        {
+            string last = since;
+            var inner = Observable.Create<Document<T>>(observer =>
+            {
+                WebClientExtensions.DownloadAndConvertChangesAsObservable<T>(new Uri(url), Username, Password, converterScheduler: convererScheduler, includes_docs: include_docs)
+                    .Subscribe((data) =>
+                    {
+                        last = data.Since;
+                        outer.OnNext(data.Document);
+                    },
+                    (e) => outer.OnError(e),
+                    () => {});
+                        //{
+                        //    if (!string.IsNullOrWhiteSpace(last) && url.Contains("&since="))
+                        //    {
+                        //        var startidx = url.IndexOf("&since=");
+                        //        var endidx = url.IndexOf("&", startidx + "&since=".Length);
+                        //        if (endidx == -1)
+                        //        {
+                        //            url = url.Remove(startidx)+"&since="+last;
+                        //        }
+                        //        else
+                        //        {
+                        //            url = url.Remove(startidx, endidx - startidx) + "&since="+last;
+                        //        }
+                        //    }
+                        //    else if(!string.IsNullOrWhiteSpace(last))
+                        //        url += "&since=" + last;
+                        //    Poll<T>(last, include_docs, convererScheduler, url, client, outer);
+                        //});
+                return () => { };
+            });
+            inner.Subscribe(_ => { }, (e) => outer.OnError(e));
+        }
+
+        private string ParseChangesParameters(int? heartbeat, int? limit, string since, int? timeout, bool descending, string filter, bool include_docs, IList<string> document_ids)
+        {           
+            string returnValue = "?feed=continuous";
+            returnValue += heartbeat.HasValue ? "&heartbeat=" + heartbeat.ToString() : string.Empty;
+            returnValue += limit.HasValue ? "&limit="+limit.ToString() : string.Empty;
+            returnValue += !string.IsNullOrWhiteSpace(since) ? "&since=" + since : string.Empty;            
+            returnValue += timeout.HasValue ? "&timeout=" + timeout.ToString() : string.Empty;
+            returnValue += descending ? "&descending=true" : string.Empty;
+            returnValue += include_docs ? "&include_docs=true" : string.Empty;
+            returnValue += !string.IsNullOrWhiteSpace(filter) ? "&filter=" + filter : string.Empty;
+            if (document_ids != null && document_ids.Count > 0)
+            {
+                returnValue += "&document_ids=[";
+                foreach (var doc_id in document_ids)
+                {
+                    returnValue += doc_id + ",";
+                }
+                if(returnValue.EndsWith(","))
+                    returnValue = returnValue.TrimEnd(new char[]{','});
+                returnValue += "]";
+            }
+            
+            return returnValue;
+        }
+
         #endregion
 
         #region Admin API

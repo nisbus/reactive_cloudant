@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Subjects;
+using System.IO;
 
 namespace ReactiveCloudant
 {
@@ -231,71 +232,83 @@ namespace ReactiveCloudant
             });
         }
 
-        internal static IObservable<string> UploadStringAsObservable(Uri address, string method, string data, string username = "", string password = "", object userToken = null)
+        internal static IObservable<Poll<T>> DownloadAndConvertChangesAsObservable<T>(Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null, bool includes_docs = false)
         {
-            return Observable.Create<string>(observer =>
+            return Observable.Create<Poll<T>>(observer =>
             {
-                HttpWebRequest request = WebRequest.Create(address) as HttpWebRequest;
-                request.ContentType = "application/json";
-                request.ContinueTimeout = 10000;
-                request.KeepAlive = false;
-                request.Method = method;
-                if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                {
-                    var authInfo = username + ":" + password;
-                    request.Headers.Add(HttpRequestHeader.Authorization, "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(authInfo)));
+                bool disposed = false;
+                try
+                {                    
+                    Task.Factory.StartNew(() =>
+                        {
+                            try
+                            {
+                                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(address);
+                                req.Headers["ContentType"]= "application/json";
+                                if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                                    req.Headers["Authorization"]= "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(username + ":" + password));
+                                var response = req.GetResponse();
+                                using (var reader = new StreamReader(response.GetResponseStream()))
+                                {
+                                    string line = string.Empty;
+                                    while ((line = reader.ReadLine()) != null && !disposed)
+                                    {
+                                        try
+                                        {
+                                            if (!string.IsNullOrWhiteSpace(line))
+                                            {
+                                                var parsed = JObject.Parse(line);
+                                                var id = parsed["id"].ToString();
+                                                var seq = parsed["seq"].ToString();
+                                                var revisions = parsed["changes"] as JArray;
+                                                string rev = string.Empty;
+                                                if (revisions != null && revisions.Count > 0)
+                                                {
+                                                    rev = revisions.Last()["rev"].ToString();
+                                                }
+
+                                                if (includes_docs)
+                                                {
+                                                    if (converterScheduler != null)
+                                                    {
+                                                        converterScheduler.Schedule(() =>
+                                                            {
+                                                                var retVal = parsed.ConvertObject<T>(includes_docs);
+                                                                observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                            });
+                                                    }
+                                                    else
+                                                    {
+                                                        var retVal = parsed.ConvertObject<T>(includes_docs);
+                                                        observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    observer.OnNext(new Poll<T> { Document = new Document<T>(id, default(T), rev), Since = seq });
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            observer.OnError(ex);
+                                        }
+                                    }
+                                    observer.OnCompleted();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                observer.OnError(ex);
+                            }
+                        });
                 }
-                var buffer = Encoding.UTF8.GetBytes(data);
-                
-                request.GetRequestStream().WriteAsync(buffer, 0, buffer.Length).ContinueWith(async res =>
-                    {
-                        await res;
-                        if (res.IsFaulted)
-                            observer.OnError(res.Exception);
-                        else if (res.IsCanceled)
-                            observer.OnCompleted();
-                        else if (res.IsCompleted)
-                        {                                                     
-                        }
-                    });
-                return () => { };
-                /*
-                UploadStringCompletedEventHandler handler = (sender, args) =>
+                catch (Exception ex)
                 {
-                    if (args.UserState != userToken) return;
+                    observer.OnError(ex);
+                }
 
-                    if (args.Cancelled)
-                        observer.OnCompleted();
-                    else if (args.Error != null)
-                        observer.OnError(args.Error);
-                    else
-                    {
-                        try
-                        {
-                            observer.OnNext(args.Result);
-                            observer.OnCompleted();
-                        }
-                        catch (Exception ex)
-                        {
-                            observer.OnError(ex);
-                        }
-                    }
-                };
-                */
-                //client.UploadStringCompleted += handler;
-                //try
-                //{
-                //    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-                //        client.SetAuthenticationHeaders(username, password);
-                //    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
-                //    client.UploadStringAsync(address, method, data, userToken);
-                //}
-                //catch (Exception ex)
-                //{
-                //    observer.OnError(ex);
-                //}
-
-                //return () => client.UploadStringCompleted -= handler;
+                return () => { disposed = true; };
             });
         }
 
