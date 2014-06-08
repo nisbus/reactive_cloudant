@@ -380,10 +380,12 @@ namespace ReactiveCloudant
         /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
-        /// <param name="staleok">Whether stale documents are ok</param>
+        /// <param name="staleok">Whether stale documents are ok</param>        
+        /// <param name="reduce">Whether the view should be reduced</param>
+        /// <param name="group">Whether to group the results or not</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true)
+        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey = "", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true, int group_level = 0, bool reduce = true, bool group = false)
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database","database");
@@ -392,7 +394,7 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(view))
                 throw new ArgumentException("You must specify a view name", "view");
             var url = BaseUrl +database+"/_design/"+designdocument+"/_view/"+ view;
-            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            url += SetViewParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit, group_level, group, reduce);
             if (staleok)
             {
                 if (url.Contains("?"))
@@ -406,7 +408,115 @@ namespace ReactiveCloudant
                 return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
             }
         }
-        
+
+        /// <summary>
+        /// Calls a list function in the database for the specified view
+        /// </summary>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <param name="database">The database the view belongs to</param>
+        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="key">Optional seach key</param>
+        /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
+        /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
+        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="staleok">Whether stale documents are ok</param>
+        /// <param name="requestParams">Additional request parameters in the form paramname=paramvalue</param>
+        /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<Document<T>> List<T>(string database, string designdocument, string list, string view, 
+                                                string key = "", string startKey = "", string endKey = "", bool includedocs = false, 
+                                                bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, 
+                                                IScheduler converterScheduler = null, string progressToken = "", 
+                                                bool staleok = true, string requestParams = null)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database", "database");
+            if (string.IsNullOrWhiteSpace(designdocument))
+                throw new ArgumentException("You must specify a design document", "designdocument");
+            if (string.IsNullOrWhiteSpace(view))
+                throw new ArgumentException("You must specify a view name", "view");
+            if (string.IsNullOrWhiteSpace(list))
+                throw new ArgumentException("You must specify a list name", "list");
+
+            var url = BaseUrl + database + "/_design/" + designdocument + "_list/"+list+"/" + view;
+            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            if (staleok)
+            {
+                if (url.Contains("?"))
+                    url += "&stale=ok";
+                else
+                    url += "?stale=ok";
+            }
+            if (!string.IsNullOrWhiteSpace(requestParams))
+            {
+                if (url.Contains("?"))
+                    url += "&" + requestParams;
+                else
+                    url += "?" + requestParams;
+            }
+            using (WebClient client = new WebClient())
+            {
+                client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            }
+        }
+
+        /// <summary>
+        /// Calls a list function in the database for the specified view
+        /// </summary>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <param name="database">The database the view belongs to</param>
+        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="key">Optional seach key</param>
+        /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
+        /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
+        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="staleok">Whether stale documents are ok</param>
+        /// <param name="requestParams">Additional request parameters in the form paramname=paramvalue</param>
+        /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<Document<T>> Show<T>(string database, string designdocument, string show, string document_id,
+                                                string key = "", string startKey = "", string endKey = "", bool includedocs = false,
+                                                bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0,
+                                                IScheduler converterScheduler = null, string progressToken = "",
+                                                bool staleok = true, string requestParams = null)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database", "database");
+            if (string.IsNullOrWhiteSpace(designdocument))
+                throw new ArgumentException("You must specify a design document", "designdocument");
+            if (string.IsNullOrWhiteSpace(show))
+                throw new ArgumentException("You must specify a show name", "list");
+
+            var url = BaseUrl + database + "/_design/" + designdocument + "_show/" + show + "/" + document_id;
+            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            if (staleok)
+            {
+                if (url.Contains("?"))
+                    url += "&stale=ok";
+                else
+                    url += "?stale=ok";
+            }
+            if (!string.IsNullOrWhiteSpace(requestParams))
+            {
+                if (url.Contains("?"))
+                    url += "&" + requestParams;
+                else
+                    url += "?" + requestParams;
+            }
+            using (WebClient client = new WebClient())
+            {
+                client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            }
+        }
+
         /// <summary>
         /// Calls a view in the database
         /// </summary>
@@ -701,6 +811,39 @@ namespace ReactiveCloudant
             else
                 url += document_id;
             return url;
+        }
+
+        internal string SetViewParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit, int group_level, bool reduce = false, bool group = false)
+        {
+            if (group && !reduce)
+            {
+                throw new ArgumentException("It is not possible to group a non reduced view");
+            }
+            var returnValue = SetQueryParameters(key, startKey, endKey, includeDocs, inclusiveend, descending, skip, limit);
+            if (group || !reduce)
+            {
+                string add = string.Empty;
+                if (returnValue.Contains("?"))
+                    add = "&";
+                else add = "?";
+                if (group)
+                {
+                    returnValue = add + "group=true";
+                    add = "&";
+                    if (group_level > 0)
+                        returnValue = "&group_level=" + group_level.ToString();
+                }
+                if (!reduce)
+                {
+                    returnValue = add + "reduce=false";
+                }
+                else
+                {
+                    returnValue = add + "reduce=true"; 
+                }
+            }
+
+            return returnValue;
         }
 
         internal string SetQueryParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit)
