@@ -659,7 +659,7 @@ namespace ReactiveCloudant
         /// <returns>A stream that returns the APIKey generated and includes the new username and password</returns>
         public IObservable<APIKey> CreateAPIKey(string progressToken = "")
         {
-            var url = "https://cloudant.com/api/generate_api_key";
+            var url = "https://cloudant.com/_api/v2/api_keys";
             
             Subject<APIKey> key = new Subject<APIKey>();            
             using (WebClient client = new WebClient())
