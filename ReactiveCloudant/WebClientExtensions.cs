@@ -150,13 +150,29 @@ namespace ReactiveCloudant
                                             string rev = string.Empty;
                                             if (getDoc)
                                             {
-                                                id = o["doc"]["_id"].ToString();
-                                                rev = o["doc"]["_rev"].ToString();
+                                                var doc = o["doc"];
+                                                if (doc != null)
+                                                {
+                                                    var _id = doc["_id"];
+                                                    if(_id != null)
+                                                        id = _id.ToString();
+                                                    var _rev = doc["_rev"];
+                                                    if (_rev != null)
+                                                        rev = _rev.ToString();
+                                                }                                                   
                                             }
                                             else
                                             {
-                                                id = o["value"]["_id"].ToString();
-                                                rev = o["value"]["_rev"].ToString();
+                                                var doc = o["value"];
+                                                if (doc != null)
+                                                {
+                                                    var _id = doc["_id"];
+                                                    if (_id != null)
+                                                        id = _id.ToString();
+                                                    var _rev = doc["_rev"];
+                                                    if (_rev != null)
+                                                        rev = _rev.ToString();
+                                                }
                                             }
                                             T value = default(T);
                                             value = o.ConvertObject<T>(getDoc);
@@ -174,13 +190,35 @@ namespace ReactiveCloudant
                                         string rev = string.Empty;
                                         if (getDoc)
                                         {
-                                            id = o["doc"]["_id"].ToString();
-                                            rev = o["doc"]["_rev"].ToString();
+                                            var doc = o["doc"];
+                                            if (doc != null)
+                                            {
+                                                var _id = doc["_id"];
+                                                if (_id != null)
+                                                    id = _id.ToString();
+                                                var _rev = doc["_rev"];
+                                                if (_rev != null)
+                                                    rev = _rev.ToString();
+                                            }
                                         }
                                         else
                                         {
-                                            id = o["value"]["_id"].ToString();
-                                            rev = o["value"]["_rev"].ToString();
+                                            var doc = o["value"];
+                                            if (doc != null)
+                                            {
+                                                var _id = doc["_id"];
+                                                if (_id != null)
+                                                    id = _id.ToString();
+                                                else
+                                                {
+                                                    _id = doc["id"];
+                                                    if (_id != null)
+                                                        id = _id.ToString();
+                                                }
+                                                var _rev = doc["_rev"];
+                                                if (_rev != null)
+                                                    rev = _rev.ToString();
+                                            }
                                         }
                                         T value = default(T);
                                         value = o.ConvertObject<T>(getDoc);

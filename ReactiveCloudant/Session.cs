@@ -293,6 +293,24 @@ namespace ReactiveCloudant
             }
         }
 
+        public IObservable<byte[]> Attachment(string document_id, string attachment_name, string database, bool staleok = true)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database");
+
+            if (string.IsNullOrWhiteSpace(document_id))
+                throw new ArgumentException("documentID cannot be empty");
+            var url = BaseUrl + database + "/";
+            if (staleok)
+                url += document_id+"/"+attachment_name + "?stale=ok";
+            else
+                url += document_id + "/" + attachment_name;
+            using (WebClient client = new WebClient())
+            {
+                return client.DownloadAttachment(new Uri(url), username:Username, password:Password);
+            }
+        }
+
         public IObservable<string> DeleteDocument(string document_id, string database, string revision_id, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
