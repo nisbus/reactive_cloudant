@@ -771,6 +771,19 @@ namespace ReactiveCloudant
             }
         }
 
+        /// <summary>
+        /// Gets a list of all databases available for this account
+        /// </summary>
+        /// <returns>A list of database names</returns>
+        public IObservable<string> Databases()
+        {
+            using (WebClient client = new WebClient())
+            {
+                var url = new Uri(BaseUrl + "_all_dbs");
+                return client.DownloadAndConvertAsObservable<string>(url, Username, Password).Select(x => x.Item);
+            }
+        }
+
         #endregion
         
         #region Helpers

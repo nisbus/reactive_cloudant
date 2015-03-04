@@ -5,6 +5,8 @@ using System.Net;
 using System.Text;
 using Microsoft.QualityTools.Testing.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Reactive.Linq;
+using System.Reactive.Concurrency;
 
 namespace ReactiveCloudant.UnitTests
 {

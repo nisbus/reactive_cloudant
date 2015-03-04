@@ -131,19 +131,72 @@ namespace ReactiveCloudant
                     {
                         try
                         {
-                            bool getDoc = false;
-                            var parsed = JObject.Parse(args.Result);
-                            var rows = parsed.Property("rows");
-                            if (rows != null)
+                            if (args.Result.StartsWith("["))
                             {
-                                var first = rows.Value.FirstOrDefault(x => x.SelectToken("doc") != null);
-                                if (first != null)
-                                    getDoc = true;
-                                
-                                if (converterScheduler != null)
+                                var r = JArray.Parse(args.Result);
+                                foreach (var a in r)
                                 {
-                                    converterScheduler.Schedule(() =>
+                                    var doc = a.ToObject<T>();
+                                    observer.OnNext(new Document<T>(string.Empty,doc, string.Empty));
+                                }
+                                observer.OnCompleted();
+                            }
+                            else
+                            {
+                                bool getDoc = false;
+                                var parsed = JObject.Parse(args.Result);
+                                var rows = parsed.Property("rows");
+                                if (rows != null)
+                                {
+                                    var first = rows.Value.FirstOrDefault(x => x.SelectToken("doc") != null);
+                                    if (first != null)
+                                        getDoc = true;
+
+                                    if (converterScheduler != null)
                                     {
+                                        converterScheduler.Schedule(() =>
+                                        {
+                                            foreach (JObject o in rows.Value)
+                                            {
+                                                string id = string.Empty;
+                                                string rev = string.Empty;
+                                                if (getDoc)
+                                                {
+                                                    var doc = o["doc"];
+                                                    if (doc != null)
+                                                    {
+                                                        var _id = doc["_id"];
+                                                        if (_id != null)
+                                                            id = _id.ToString();
+                                                        var _rev = doc["_rev"];
+                                                        if (_rev != null)
+                                                            rev = _rev.ToString();
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    var doc = o["value"];
+                                                    if (doc != null)
+                                                    {
+                                                        var _id = doc["_id"];
+                                                        if (_id != null)
+                                                            id = _id.ToString();
+                                                        var _rev = doc["_rev"];
+                                                        if (_rev != null)
+                                                            rev = _rev.ToString();
+                                                    }
+                                                }
+                                                T value = default(T);
+                                                value = o.ConvertObject<T>(getDoc);
+
+                                                observer.OnNext(new Document<T>(id, value, rev));
+                                            }
+                                            observer.OnCompleted();
+                                        });
+                                    }
+                                    else
+                                    {
+
                                         foreach (JObject o in rows.Value)
                                         {
                                             string id = string.Empty;
@@ -154,12 +207,12 @@ namespace ReactiveCloudant
                                                 if (doc != null)
                                                 {
                                                     var _id = doc["_id"];
-                                                    if(_id != null)
+                                                    if (_id != null)
                                                         id = _id.ToString();
                                                     var _rev = doc["_rev"];
                                                     if (_rev != null)
                                                         rev = _rev.ToString();
-                                                }                                                   
+                                                }
                                             }
                                             else
                                             {
@@ -169,6 +222,12 @@ namespace ReactiveCloudant
                                                     var _id = doc["_id"];
                                                     if (_id != null)
                                                         id = _id.ToString();
+                                                    else
+                                                    {
+                                                        _id = doc["id"];
+                                                        if (_id != null)
+                                                            id = _id.ToString();
+                                                    }
                                                     var _rev = doc["_rev"];
                                                     if (_rev != null)
                                                         rev = _rev.ToString();
@@ -176,73 +235,27 @@ namespace ReactiveCloudant
                                             }
                                             T value = default(T);
                                             value = o.ConvertObject<T>(getDoc);
-
                                             observer.OnNext(new Document<T>(id, value, rev));
                                         }
-                                        observer.OnCompleted();                                        
-                                    });
-                                }
-                                else
-                                {
-
-                                    foreach (JObject o in rows.Value)
-                                    {
-                                        string id = string.Empty;
-                                        string rev = string.Empty;
-                                        if (getDoc)
-                                        {
-                                            var doc = o["doc"];
-                                            if (doc != null)
-                                            {
-                                                var _id = doc["_id"];
-                                                if (_id != null)
-                                                    id = _id.ToString();
-                                                var _rev = doc["_rev"];
-                                                if (_rev != null)
-                                                    rev = _rev.ToString();
-                                            }
-                                        }
-                                        else
-                                        {
-                                            var doc = o["value"];
-                                            if (doc != null)
-                                            {
-                                                var _id = doc["_id"];
-                                                if (_id != null)
-                                                    id = _id.ToString();
-                                                else
-                                                {
-                                                    _id = doc["id"];
-                                                    if (_id != null)
-                                                        id = _id.ToString();
-                                                }
-                                                var _rev = doc["_rev"];
-                                                if (_rev != null)
-                                                    rev = _rev.ToString();
-                                            }
-                                        }
-                                        T value = default(T);
-                                        value = o.ConvertObject<T>(getDoc);
-                                        observer.OnNext(new Document<T>(id, value, rev));
+                                        observer.OnCompleted();
                                     }
-                                    observer.OnCompleted();
                                 }
-                            }
-                            else
-                            {
-                                var id = parsed["_id"].ToString();
-                                var rev = parsed["_rev"].ToString();
-
-                                if (converterScheduler != null)
-                                    converterScheduler.Schedule(() =>
-                                        {
-                                            observer.OnNext(new Document<T>(id,parsed.ToObject<T>(),rev));
-                                            observer.OnCompleted();
-                                        });
                                 else
                                 {
-                                    observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
-                                    observer.OnCompleted();
+                                    var id = parsed["_id"].ToString();
+                                    var rev = parsed["_rev"].ToString();
+
+                                    if (converterScheduler != null)
+                                        converterScheduler.Schedule(() =>
+                                            {
+                                                observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
+                                                observer.OnCompleted();
+                                            });
+                                    else
+                                    {
+                                        observer.OnNext(new Document<T>(id, parsed.ToObject<T>(), rev));
+                                        observer.OnCompleted();
+                                    }
                                 }
                             }
                             
@@ -270,7 +283,7 @@ namespace ReactiveCloudant
                 return () => client.DownloadStringCompleted -= handler;
             });
         }
-       
+
         internal static IObservable<Poll<T>> DownloadAndConvertChangesAsObservable<T>(Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null, bool includes_docs = false)
         {
             return Observable.Create<Poll<T>>(observer =>
@@ -492,30 +505,6 @@ namespace ReactiveCloudant
                 else
                     return obj.Values().Value<T>();
             }
-        }
-
-        internal static void ConvertResult<T>(IObserver<Document<T>> observer, bool getDoc, JProperty rows)
-        {
-            foreach (JObject o in rows.Value)
-            {
-                string id = string.Empty;
-                string rev = string.Empty;
-                if (getDoc)
-                {
-                    id = o["doc"]["_id"].ToString();
-                    rev = o["doc"]["_rev"].ToString();
-                }
-                else
-                {
-                    id = o["value"]["_id"].ToString();
-                    rev = o["value"]["_rev"].ToString();
-                }
-                T value = default(T);
-                value = o.ConvertObject<T>(getDoc);
-
-                observer.OnNext(new Document<T>(id, value, rev));
-            }
-            observer.OnCompleted();
         }
 
         internal static void SetAuthenticationHeaders(this WebClient client, string username, string password)
