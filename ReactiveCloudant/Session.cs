@@ -3,14 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Reactive.Concurrency;
-using System.Reactive.Subjects;
 using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Text;
-using System.Threading.Tasks;
-using System.Reactive;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Threading;
 
 namespace ReactiveCloudant
 {
@@ -71,7 +69,168 @@ namespace ReactiveCloudant
         #endregion
 
         #region Document API
-        
+
+        /// <summary>
+        /// Saves an object to the database
+        /// </summary>
+        /// <param name="database">The database name to delete from</param>
+        /// <param name="documents">The documents to delete</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A successful save operation will a SaveResult object for each document saved</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<SaveResult> BulkDelete(string database, IList<Document<dynamic>> documents, string progressToken = "")
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database to delete from");
+            if (documents == null)
+                throw new ArgumentException("Cannot delete null object");
+
+            var url = BaseUrl + database + "/_bulk_docs";
+            string sb = "{\"docs\": [";
+            foreach (var d in documents)
+            {
+                if (string.IsNullOrWhiteSpace(d.ID) || string.IsNullOrWhiteSpace(d.Version))
+                    throw new ArgumentException("All documents need to have both version and id to be deleted");
+
+                string json = JsonConvert.SerializeObject(d.Item);
+                json = SetID(json, d.ID);                
+                json = SetRev(json, d.Version);
+                json = SetDeleted(json);
+                sb += json + ",";
+
+            }
+            sb = sb.TrimEnd(new char[] { ',' }) + "]}";
+            Subject<SaveResult> deleteResult = new Subject<SaveResult>();
+
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+
+                client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
+                {
+                    try
+                    {
+                        string doc_id = string.Empty;
+                        string rev_id = string.Empty;
+                        string error = string.Empty;
+                        var responses = JArray.Parse(s);
+                        foreach (JObject response in responses)
+                        {
+                            var e = response.Property("error");
+                            if (e != null)
+                            {
+                                var reason = response.Property("reason").Value.ToString();
+                                error = e.Value.ToString() + " - " + reason;
+                            }
+                            else
+                            {
+                                var revision = response.Property("rev");
+                                if (revision != null)
+                                {
+                                    JValue val = revision.Value as JValue;
+                                    rev_id = val.Value.ToString();
+                                }
+                            }
+                            var idProp = response.Property("id");
+                            if (idProp != null)
+                            {
+                                JValue val = idProp.Value as JValue;
+                                doc_id = idProp.Value.ToString();
+                            }
+                            deleteResult.OnNext(new SaveResult(doc_id, rev_id, error));
+                            error = string.Empty;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        deleteResult.OnError(e);
+                    }
+                }, (e) => deleteResult.OnError(e),
+                    () => deleteResult.OnCompleted());
+                return deleteResult.AsObservable();
+            }
+        }
+
+        /// <summary>
+        /// Saves an object to the database
+        /// </summary>
+        /// <param name="database">The database name to save/update to</param>
+        /// <param name="documents">The documents to save</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A successful save operation will a SaveResult object for each document saved</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<SaveResult> BulkSave(string database, IList<Document<dynamic>> documents, string progressToken = "")
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify a database to save to");
+            if (documents == null)
+                throw new ArgumentException("Cannot save null object");
+
+            var url = BaseUrl + database + "/_bulk_docs";
+            string sb = "{\"docs\": [";            
+            foreach (var d in documents)
+            {
+                var json = JsonConvert.SerializeObject(d.Item);
+                if(!string.IsNullOrWhiteSpace(d.ID))
+                    json = SetID(json, d.ID);
+
+                if (!string.IsNullOrWhiteSpace(d.Version))
+                    json = SetRev(json, d.Version);
+                sb += json+",";
+
+            }
+            sb = sb.TrimEnd(new char[]{','})+ "]}";
+            Subject<SaveResult> saveResult = new Subject<SaveResult>();
+
+            using (WebClient client = new WebClient())
+            {
+                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+
+                client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
+                {
+                    try
+                    {
+                        string doc_id = string.Empty;
+                        string rev_id = string.Empty;
+                        string error = string.Empty;                        
+                        var responses = JArray.Parse(s);
+                        foreach (JObject response in responses)
+                        {
+                            var e = response.Property("error");
+                            if (e != null)
+                            {                                
+                                var reason = response.Property("reason").Value.ToString();
+                                error = e.Value.ToString()+" - "+reason;
+                            }
+                            else
+                            {
+                                var revision = response.Property("rev");
+                                if (revision != null)
+                                {
+                                    JValue val = revision.Value as JValue;
+                                    rev_id = val.Value.ToString();
+                                }
+                            }
+                            var idProp = response.Property("id");
+                            if (idProp != null)
+                            {
+                                JValue val = idProp.Value as JValue;
+                                doc_id = idProp.Value.ToString();
+                            }
+                            saveResult.OnNext(new SaveResult(doc_id, rev_id,error));
+                            error = string.Empty;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        saveResult.OnError(e);
+                    }
+                }, (e) => saveResult.OnError(e),
+                    () => saveResult.OnCompleted());
+                return saveResult.AsObservable();
+            }
+        }
+
         /// <summary>
         /// Saves an object to the database
         /// </summary>
@@ -107,7 +266,15 @@ namespace ReactiveCloudant
                         {
                             string doc_id = string.Empty;
                             string rev_id = string.Empty;
+                            string error = string.Empty;
+                            
                             var response = JObject.Parse(s);
+                            var e = response.Property("error");
+                            if (e != null)
+                            {
+                                var reason = response.Property("reason");
+                                error = e.Value.ToString() + " - " + reason.Value.ToString();
+                            }
                             var idProp = response.Property("id");
                             if (idProp != null)
                             {
@@ -121,7 +288,7 @@ namespace ReactiveCloudant
                                 JValue val = revision.Value as JValue;
                                 rev_id = val.Value.ToString();
                             }
-                            saveResult.OnNext(new SaveResult(doc_id, rev_id));
+                            saveResult.OnNext(new SaveResult(doc_id, rev_id, error));
                         }
                         catch (Exception e) 
                         { 
@@ -213,9 +380,12 @@ namespace ReactiveCloudant
         /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="staleok">Whether stale documents are ok</param>        
+        /// <param name="reduce">Whether the view should be reduced</param>
+        /// <param name="group">Whether to group the results or not</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey="", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true)
+        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey = "", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true, int group_level = 0, bool reduce = true, bool group = false)
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database","database");
@@ -224,7 +394,7 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(view))
                 throw new ArgumentException("You must specify a view name", "view");
             var url = BaseUrl +database+"/_design/"+designdocument+"/_view/"+ view;
-            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            url += SetViewParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit, group_level, group, reduce);
             if (staleok)
             {
                 if (url.Contains("?"))
@@ -238,7 +408,115 @@ namespace ReactiveCloudant
                 return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
             }
         }
-        
+
+        /// <summary>
+        /// Calls a list function in the database for the specified view
+        /// </summary>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <param name="database">The database the view belongs to</param>
+        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="key">Optional seach key</param>
+        /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
+        /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
+        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="staleok">Whether stale documents are ok</param>
+        /// <param name="requestParams">Additional request parameters in the form paramname=paramvalue</param>
+        /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<Document<T>> List<T>(string database, string designdocument, string list, string view, 
+                                                string key = "", string startKey = "", string endKey = "", bool includedocs = false, 
+                                                bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, 
+                                                IScheduler converterScheduler = null, string progressToken = "", 
+                                                bool staleok = true, string requestParams = null)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database", "database");
+            if (string.IsNullOrWhiteSpace(designdocument))
+                throw new ArgumentException("You must specify a design document", "designdocument");
+            if (string.IsNullOrWhiteSpace(view))
+                throw new ArgumentException("You must specify a view name", "view");
+            if (string.IsNullOrWhiteSpace(list))
+                throw new ArgumentException("You must specify a list name", "list");
+
+            var url = BaseUrl + database + "/_design/" + designdocument + "_list/"+list+"/" + view;
+            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            if (staleok)
+            {
+                if (url.Contains("?"))
+                    url += "&stale=ok";
+                else
+                    url += "?stale=ok";
+            }
+            if (!string.IsNullOrWhiteSpace(requestParams))
+            {
+                if (url.Contains("?"))
+                    url += "&" + requestParams;
+                else
+                    url += "?" + requestParams;
+            }
+            using (WebClient client = new WebClient())
+            {
+                client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            }
+        }
+
+        /// <summary>
+        /// Calls a list function in the database for the specified view
+        /// </summary>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <param name="database">The database the view belongs to</param>
+        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="key">Optional seach key</param>
+        /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
+        /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
+        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="staleok">Whether stale documents are ok</param>
+        /// <param name="requestParams">Additional request parameters in the form paramname=paramvalue</param>
+        /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IObservable<Document<T>> Show<T>(string database, string designdocument, string show, string document_id,
+                                                string key = "", string startKey = "", string endKey = "", bool includedocs = false,
+                                                bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0,
+                                                IScheduler converterScheduler = null, string progressToken = "",
+                                                bool staleok = true, string requestParams = null)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database", "database");
+            if (string.IsNullOrWhiteSpace(designdocument))
+                throw new ArgumentException("You must specify a design document", "designdocument");
+            if (string.IsNullOrWhiteSpace(show))
+                throw new ArgumentException("You must specify a show name", "list");
+
+            var url = BaseUrl + database + "/_design/" + designdocument + "_show/" + show + "/" + document_id;
+            url += SetQueryParameters(key, startKey, endKey, includedocs, inclusiveend, descending, skip, limit);
+            if (staleok)
+            {
+                if (url.Contains("?"))
+                    url += "&stale=ok";
+                else
+                    url += "?stale=ok";
+            }
+            if (!string.IsNullOrWhiteSpace(requestParams))
+            {
+                if (url.Contains("?"))
+                    url += "&" + requestParams;
+                else
+                    url += "?" + requestParams;
+            }
+            using (WebClient client = new WebClient())
+            {
+                client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
+                return client.DownloadAndConvertAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            }
+        }
+
         /// <summary>
         /// Calls a view in the database
         /// </summary>
@@ -247,21 +525,12 @@ namespace ReactiveCloudant
         /// <param name="database">The database the view belongs to</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="staleok">Whether stale documents are ok</param>
         /// <returns>An observable sequence that will only send one item</returns>
         /// <exception cref="ArgumentException"></exception>
         public IObservable<Document<T>> Document<T>(string document_id, string database, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true)
         {
-            if (string.IsNullOrWhiteSpace(database))
-                throw new ArgumentException("You must specify the database");
-
-            if (string.IsNullOrWhiteSpace(document_id))
-                throw new ArgumentException("documentID cannot be empty");
-            var url = BaseUrl+database+"/";
-            if (staleok)
-                url += document_id + "?stale=ok";
-            else
-                url += document_id;
-
+            var url = CreateGetUrl(document_id, database, staleok);
             using (WebClient client = new WebClient())
             {                    
                 client.DownloadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));
@@ -274,24 +543,17 @@ namespace ReactiveCloudant
         /// </summary>
         /// <param name="document_id">The id of the document to search for attachments on</param>
         /// <param name="database">The database the document is in</param>
+        /// <param name="staleok">Wheter stale attachments should be returned</param>
         /// <returns cref="Attachment">An attachment which you can then query for it's actual data</returns>
         public IObservable<Attachment> Attachments(string document_id, string database, bool staleok = true)
         {
-            if (string.IsNullOrWhiteSpace(database))
-                throw new ArgumentException("You must specify the database");
-
-            if (string.IsNullOrWhiteSpace(document_id))
-                throw new ArgumentException("documentID cannot be empty");
-            var url = BaseUrl + database + "/";
-            if(staleok)
-                url += document_id+"?stale=ok";
-            else
-                url += document_id;
+            var url = CreateGetUrl(document_id, database, staleok);
             using (WebClient client = new WebClient())
-            {             
+            {
                 return client.Attachments(new Uri(url), Username, Password);
             }
         }
+
 
         public IObservable<byte[]> Attachment(string document_id, string attachment_name, string database, bool staleok = true)
         {
@@ -311,6 +573,58 @@ namespace ReactiveCloudant
             }
         }
 
+        /// <summary>
+        /// returns all the attachments of a document, i.e. their names, size, type etc.
+        /// </summary>
+        /// <param name="document_id">The id of the document to search for attachments on</param>
+        /// <param name="database">The database the document is in</param>
+        /// <param name="staleok">Whether to return stale attachments</param>
+        /// <param name="attachment_name">a filter to get just an attachment with the name</param>
+        /// <returns cref="Attachment">The actual byte data of the attachment/s</returns>
+        public IObservable<byte[]> Attachments(string document_id, string database, bool staleok = true, string attachment_name = null)
+        {
+            CancellationTokenSource source = new CancellationTokenSource();
+            return Observable.Create<byte[]>(observer =>
+            {
+                var url = CreateGetUrl(document_id, database, staleok);
+                using (WebClient client = new WebClient())
+                {
+                    if (attachment_name != null)
+                    {
+                        client.Attachments(new Uri(url), Username, Password).Where(a => a.Name == attachment_name).Subscribe(async attachment =>
+                        {
+                            if (attachment != null)
+                            {
+                                observer.OnNext(await attachment.Data(Username, Password).RunAsync(source.Token));
+                            }
+                            else
+                                observer.OnCompleted();
+                        }, (e) => observer.OnError(e),
+                        () => observer.OnCompleted());
+                    }
+                    else
+                    {
+                        client.Attachments(new Uri(url), Username, Password).Subscribe(async attachment =>
+                        {
+                            if (attachment != null)
+                                observer.OnNext(await attachment.Data(Username, Password).RunAsync(source.Token));
+                        }, (e) => observer.OnError(e),
+                        () => observer.OnCompleted());
+                    }
+                }
+                return () => { source.Cancel(); };
+            });
+        }
+
+        /// <summary>
+        /// Deletes a document
+        /// </summary>
+        /// <param name="document_id">The id of the document</param>
+        /// <param name="database">The database to delete from</param>
+        /// <param name="revision_id">The revision id of the document</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A string with the results of the operation, success = {"ok":true} </returns>
+
         public IObservable<string> DeleteDocument(string document_id, string database, string revision_id, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
@@ -329,77 +643,31 @@ namespace ReactiveCloudant
             }
         }
 
-        public IObservable<Document<T>> Changes<T>(string database, IList<string> document_ids = null, string filter = null, bool include_docs = false, int? heartbeat = null, int? limit = null, string since = null, int? timeout = null, bool descending = false, IScheduler convererScheduler = null)
+        /// <summary>
+        /// Subscribes to the changes feed of a database
+        /// </summary>
+        /// <typeparam name="T">The type of object to listen for, other types will be ignored</typeparam>
+        /// <param name="database">The database to listen to</param>
+        /// <param name="document_ids">A list of document id's to filter on</param>
+        /// <param name="filter">A filter described in the design document</param>
+        /// <param name="include_docs">Whether to include the docs being inserted/updated/deleted</param>
+        /// <param name="heartbeat">Heartbeat for the connection</param>
+        /// <param name="limit">A limit to the documents returned</param>
+        /// <param name="since">The sequence number to start listening from</param>
+        /// <param name="timeout">A timeout for stopping the listener</param>
+        /// <param name="descending">Whether documents should be ordered in a descending order when returned</param>
+        /// <param name="convererScheduler">A scheduler to create the objects on, useful for UI objects in for example WPF</param>
+        /// <returns>A Poll<T> object which contains the document and the last sequence number"/></returns>
+        public IObservable<Poll<T>> Changes<T>(string database, IList<string> document_ids = null, string filter = null, bool include_docs = false, int? heartbeat = null, int? limit = null, string since = null, int? timeout = null, bool descending = false, IScheduler convererScheduler = null)
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database for the feed");
             var url = BaseUrl + database+"/_changes" + ParseChangesParameters(heartbeat, limit, since, timeout, descending, filter, include_docs, document_ids);
-            Subject<Document<T>> outer = new Subject<Document<T>>();
+            Subject<Poll<T>> outer = new Subject<Poll<T>>();
             Poll<T>(since, include_docs, convererScheduler, url, outer);
             return outer.AsObservable();                
         }
-
-        private void Poll<T>(string since, bool include_docs, IScheduler convererScheduler, string url, Subject<Document<T>> outer)
-        {
-            string last = since;
-            var inner = Observable.Create<Document<T>>(observer =>
-            {
-                WebClientExtensions.DownloadAndConvertChangesAsObservable<T>(new Uri(url), Username, Password, converterScheduler: convererScheduler, includes_docs: include_docs)
-                    .Subscribe((data) =>
-                    {
-                        last = data.Since;
-                        outer.OnNext(data.Document);
-                    },
-                    (e) => outer.OnError(e),
-                    () => {});
-                        //{
-                        //    if (!string.IsNullOrWhiteSpace(last) && url.Contains("&since="))
-                        //    {
-                        //        var startidx = url.IndexOf("&since=");
-                        //        var endidx = url.IndexOf("&", startidx + "&since=".Length);
-                        //        if (endidx == -1)
-                        //        {
-                        //            url = url.Remove(startidx)+"&since="+last;
-                        //        }
-                        //        else
-                        //        {
-                        //            url = url.Remove(startidx, endidx - startidx) + "&since="+last;
-                        //        }
-                        //    }
-                        //    else if(!string.IsNullOrWhiteSpace(last))
-                        //        url += "&since=" + last;
-                        //    Poll<T>(last, include_docs, convererScheduler, url, client, outer);
-                        //});
-                return () => { };
-            });
-            inner.Subscribe(_ => { }, (e) => outer.OnError(e));
-        }
-
-        private string ParseChangesParameters(int? heartbeat, int? limit, string since, int? timeout, bool descending, string filter, bool include_docs, IList<string> document_ids)
-        {           
-            string returnValue = "?feed=continuous";
-            returnValue += heartbeat.HasValue ? "&heartbeat=" + heartbeat.ToString() : string.Empty;
-            returnValue += limit.HasValue ? "&limit="+limit.ToString() : string.Empty;
-            returnValue += !string.IsNullOrWhiteSpace(since) ? "&since=" + since : string.Empty;            
-            returnValue += timeout.HasValue ? "&timeout=" + timeout.ToString() : string.Empty;
-            returnValue += descending ? "&descending=true" : string.Empty;
-            returnValue += include_docs ? "&include_docs=true" : string.Empty;
-            returnValue += !string.IsNullOrWhiteSpace(filter) ? "&filter=" + filter : string.Empty;
-            if (document_ids != null && document_ids.Count > 0)
-            {
-                returnValue += "&document_ids=[";
-                foreach (var doc_id in document_ids)
-                {
-                    returnValue += doc_id + ",";
-                }
-                if(returnValue.EndsWith(","))
-                    returnValue = returnValue.TrimEnd(new char[]{','});
-                returnValue += "]";
-            }
-            
-            return returnValue;
-        }
-
+               
         #endregion
 
         #region Admin API
@@ -411,7 +679,7 @@ namespace ReactiveCloudant
         /// <returns>A stream that returns the APIKey generated and includes the new username and password</returns>
         public IObservable<APIKey> CreateAPIKey(string progressToken = "")
         {
-            var url = "https://cloudant.com/api/generate_api_key";
+            var url = "https://cloudant.com/_api/v2/api_keys";
             
             Subject<APIKey> key = new Subject<APIKey>();            
             using (WebClient client = new WebClient())
@@ -467,6 +735,12 @@ namespace ReactiveCloudant
             }            
         }
 
+        /// <summary>
+        /// Creates a new database
+        /// </summary>
+        /// <param name="database">The name of the new database</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A string containing the json response from the server</returns>
         public IObservable<string> CreateDatabase(string database, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
@@ -479,6 +753,12 @@ namespace ReactiveCloudant
             }
         }
 
+        /// <summary>
+        /// Deletes an existing database
+        /// </summary>
+        /// <param name="database">The name of the database to delete</param>
+        /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <returns>A string containing the json response from the server</returns>
         public IObservable<string> DeleteDatabase(string database, string progressToken = "")
         {
             if (string.IsNullOrWhiteSpace(database))
@@ -494,6 +774,97 @@ namespace ReactiveCloudant
         #endregion
         
         #region Helpers
+
+        internal string ParseChangesParameters(int? heartbeat, int? limit, string since, int? timeout, bool descending, string filter, bool include_docs, IList<string> document_ids)
+        {
+            string returnValue = "?feed=continuous";
+            returnValue += heartbeat.HasValue ? "&heartbeat=" + heartbeat.ToString() : string.Empty;
+            returnValue += limit.HasValue ? "&limit=" + limit.ToString() : string.Empty;
+            returnValue += !string.IsNullOrWhiteSpace(since) ? "&since=" + since : string.Empty;
+            returnValue += timeout.HasValue ? "&timeout=" + timeout.ToString() : string.Empty;
+            returnValue += descending ? "&descending=true" : string.Empty;
+            returnValue += include_docs ? "&include_docs=true" : string.Empty;
+            returnValue += !string.IsNullOrWhiteSpace(filter) ? "&filter=" + filter : string.Empty;
+            if (document_ids != null && document_ids.Count > 0)
+            {
+                returnValue += "&document_ids=[";
+                foreach (var doc_id in document_ids)
+                {
+                    returnValue += doc_id + ",";
+                }
+                if (returnValue.EndsWith(","))
+                    returnValue = returnValue.TrimEnd(new char[] { ',' });
+                returnValue += "]";
+            }
+
+            return returnValue;
+        }
+
+        internal void Poll<T>(string since, bool include_docs, IScheduler convererScheduler, string url, Subject<Poll<T>> outer)
+        {
+            string last = since;
+            var inner = Observable.Create<Document<T>>(observer =>
+            {
+                WebClientExtensions.DownloadAndConvertChangesAsObservable<T>(new Uri(url), Username, Password, converterScheduler: convererScheduler, includes_docs: include_docs)
+                    .Subscribe((data) =>
+                    {
+                        last = data.Since;
+                        outer.OnNext(data);
+                    },
+                    (e) => outer.OnError(e),
+                    () => { });
+                return () => { };
+            });
+            inner.Subscribe(_ => { }, (e) => outer.OnError(e));
+        }
+
+        internal string CreateGetUrl(string document_id, string database, bool staleok)
+        {
+            if (string.IsNullOrWhiteSpace(database))
+                throw new ArgumentException("You must specify the database");
+
+            if (string.IsNullOrWhiteSpace(document_id))
+                throw new ArgumentException("documentID cannot be empty");
+            var url = BaseUrl + database + "/";
+            if (staleok)
+                url += document_id + "?stale=ok";
+            else
+                url += document_id;
+            return url;
+        }
+
+        internal string SetViewParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit, int group_level, bool reduce = false, bool group = false)
+        {
+            if (group && !reduce)
+            {
+                throw new ArgumentException("It is not possible to group a non reduced view");
+            }
+            var returnValue = SetQueryParameters(key, startKey, endKey, includeDocs, inclusiveend, descending, skip, limit);
+            if (group || !reduce)
+            {
+                string add = string.Empty;
+                if (returnValue.Contains("?"))
+                    add = "&";
+                else add = "?";
+                if (group)
+                {
+                    returnValue = add + "group=true";
+                    add = "&";
+                    if (group_level > 0)
+                        returnValue = "&group_level=" + group_level.ToString();
+                }
+                if (!reduce)
+                {
+                    returnValue = add + "reduce=false";
+                }
+                else
+                {
+                    returnValue = add + "reduce=true"; 
+                }
+            }
+
+            return returnValue;
+        }
 
         internal string SetQueryParameters(string key, string startKey, string endKey, bool includeDocs, bool inclusiveend, bool descending, int skip, int limit)
         {
@@ -535,6 +906,13 @@ namespace ReactiveCloudant
                 throw new ArgumentException("You need to specify startkey as well when specifying endkey","endkey");
             else
                 return string.Empty;
+        }
+
+        internal string SetDeleted(dynamic json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                throw new ArgumentException("Invalid json for setting deleted", "json");
+            return json.Insert(1, "\"_deleted\": true,");
         }
 
         internal string SetRev(string json, string id)

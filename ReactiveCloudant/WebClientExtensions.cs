@@ -179,11 +179,12 @@ namespace ReactiveCloudant
 
                                             observer.OnNext(new Document<T>(id, value, rev));
                                         }
-                                        observer.OnCompleted();
+                                        observer.OnCompleted();                                        
                                     });
                                 }
                                 else
                                 {
+
                                     foreach (JObject o in rows.Value)
                                     {
                                         string id = string.Empty;
@@ -269,7 +270,7 @@ namespace ReactiveCloudant
                 return () => client.DownloadStringCompleted -= handler;
             });
         }
-
+       
         internal static IObservable<Poll<T>> DownloadAndConvertChangesAsObservable<T>(Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null, bool includes_docs = false)
         {
             return Observable.Create<Poll<T>>(observer =>
@@ -296,34 +297,46 @@ namespace ReactiveCloudant
                                             if (!string.IsNullOrWhiteSpace(line))
                                             {
                                                 var parsed = JObject.Parse(line);
-                                                var id = parsed["id"].ToString();
-                                                var seq = parsed["seq"].ToString();
-                                                var revisions = parsed["changes"] as JArray;
-                                                string rev = string.Empty;
-                                                if (revisions != null && revisions.Count > 0)
+                                                if (parsed.Property("id") == null)
                                                 {
-                                                    rev = revisions.Last()["rev"].ToString();
-                                                }
-
-                                                if (includes_docs)
-                                                {
-                                                    if (converterScheduler != null)
+                                                    if (parsed.Property("last_seq") != null)
                                                     {
-                                                        converterScheduler.Schedule(() =>
-                                                            {
-                                                                var retVal = parsed.ConvertObject<T>(includes_docs);
-                                                                observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
-                                                            });
-                                                    }
-                                                    else
-                                                    {
-                                                        var retVal = parsed.ConvertObject<T>(includes_docs);
-                                                        observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                        var seq = parsed["last_seq"].ToString();
+                                                        observer.OnNext(new Poll<T> { Document = new Document<T>(string.Empty, default(T), string.Empty), Since = seq });
+                                                        observer.OnCompleted();
                                                     }
                                                 }
                                                 else
                                                 {
-                                                    observer.OnNext(new Poll<T> { Document = new Document<T>(id, default(T), rev), Since = seq });
+                                                    var id = parsed["id"].ToString();
+                                                    var seq = parsed["seq"].ToString();
+                                                    var revisions = parsed["changes"] as JArray;
+                                                    string rev = string.Empty;
+                                                    if (revisions != null && revisions.Count > 0)
+                                                    {
+                                                        rev = revisions.Last()["rev"].ToString();
+                                                    }
+
+                                                    if (includes_docs)
+                                                    {
+                                                        if (converterScheduler != null)
+                                                        {
+                                                            converterScheduler.Schedule(() =>
+                                                                {
+                                                                    var retVal = parsed.ConvertObject<T>(includes_docs);
+                                                                    observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                                });
+                                                        }
+                                                        else
+                                                        {
+                                                            var retVal = parsed.ConvertObject<T>(includes_docs);
+                                                            observer.OnNext(new Poll<T> { Document = new Document<T>(id, retVal, rev), Since = seq });
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        observer.OnNext(new Poll<T> { Document = new Document<T>(id, default(T), rev), Since = seq });
+                                                    }
                                                 }
                                             }
                                         }
@@ -479,6 +492,30 @@ namespace ReactiveCloudant
                 else
                     return obj.Values().Value<T>();
             }
+        }
+
+        internal static void ConvertResult<T>(IObserver<Document<T>> observer, bool getDoc, JProperty rows)
+        {
+            foreach (JObject o in rows.Value)
+            {
+                string id = string.Empty;
+                string rev = string.Empty;
+                if (getDoc)
+                {
+                    id = o["doc"]["_id"].ToString();
+                    rev = o["doc"]["_rev"].ToString();
+                }
+                else
+                {
+                    id = o["value"]["_id"].ToString();
+                    rev = o["value"]["_rev"].ToString();
+                }
+                T value = default(T);
+                value = o.ConvertObject<T>(getDoc);
+
+                observer.OnNext(new Document<T>(id, value, rev));
+            }
+            observer.OnCompleted();
         }
 
         internal static void SetAuthenticationHeaders(this WebClient client, string username, string password)
