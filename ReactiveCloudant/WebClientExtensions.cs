@@ -10,6 +10,7 @@ using Newtonsoft.Json.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Subjects;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace ReactiveCloudant
 {
@@ -115,7 +116,51 @@ namespace ReactiveCloudant
             });
         }
 
-        internal static IObservable<Document<T>> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
+        internal static IObservable<T> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
+        {
+            return Observable.Create<T>(observer =>
+            {
+                DownloadStringCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.UserState != userToken) return;
+
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {
+                            var result = JsonConvert.DeserializeObject<T>(args.Result);
+                            observer.OnNext(result);
+                            observer.OnCompleted();
+
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+                client.DownloadStringCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                    client.DownloadStringAsync(address, userToken);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.DownloadStringCompleted -= handler;                
+            });
+        }
+
+        internal static IObservable<Document<T>> DownloadAndConvertDocumentAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
         {
             return Observable.Create<Document<T>>(observer =>
             {
@@ -163,7 +208,7 @@ namespace ReactiveCloudant
                                                 if (getDoc)
                                                 {
                                                     var doc = o["doc"];
-                                                    if (doc != null)
+                                                    if (doc != null && doc is JObject)
                                                     {
                                                         var _id = doc["_id"];
                                                         if (_id != null)
@@ -178,13 +223,17 @@ namespace ReactiveCloudant
                                                     var doc = o["value"];
                                                     if (doc != null)
                                                     {
-                                                        var _id = doc["_id"];
-                                                        if (_id != null)
-                                                            id = _id.ToString();
-                                                        var _rev = doc["_rev"];
-                                                        if (_rev != null)
-                                                            rev = _rev.ToString();
-                                                    }
+                                                        if (doc is JObject)
+                                                        {
+                                                            var _id = doc["_id"];
+                                                            if (_id != null)
+                                                                id = _id.ToString();
+                                                            var _rev = doc["_rev"];
+                                                            if (_rev != null)
+                                                                rev = _rev.ToString();
+                                                        }
+                                                        else id = o["key"].ToString();
+                                                    }                                                    
                                                 }
                                                 T value = default(T);
                                                 value = o.ConvertObject<T>(getDoc);
@@ -204,7 +253,7 @@ namespace ReactiveCloudant
                                             if (getDoc)
                                             {
                                                 var doc = o["doc"];
-                                                if (doc != null)
+                                                if (doc != null && doc is JObject)
                                                 {
                                                     var _id = doc["_id"];
                                                     if (_id != null)
@@ -219,19 +268,25 @@ namespace ReactiveCloudant
                                                 var doc = o["value"];
                                                 if (doc != null)
                                                 {
-                                                    var _id = doc["_id"];
-                                                    if (_id != null)
-                                                        id = _id.ToString();
-                                                    else
+                                                    if (doc is JObject)
                                                     {
-                                                        _id = doc["id"];
+                                                        var _id = doc["_id"];
                                                         if (_id != null)
                                                             id = _id.ToString();
+                                                        else
+                                                        {
+                                                            _id = doc["id"];
+                                                            if (_id != null)
+                                                                id = _id.ToString();
+                                                        }
+                                                        var _rev = doc["_rev"];
+                                                        if (_rev != null)
+                                                            rev = _rev.ToString();
                                                     }
-                                                    var _rev = doc["_rev"];
-                                                    if (_rev != null)
-                                                        rev = _rev.ToString();
+                                                    else
+                                                        id = o["key"].ToString();
                                                 }
+                                                
                                             }
                                             T value = default(T);
                                             value = o.ConvertObject<T>(getDoc);
