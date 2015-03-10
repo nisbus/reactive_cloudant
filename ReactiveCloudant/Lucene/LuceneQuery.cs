@@ -73,20 +73,20 @@ namespace ReactiveCloudant.Lucene
             this.session = session;           
         }
 
+        #endregion
+
+        #region Init
+
         public static ICanAddDatabase Session(CloudantSession session)
         {
             return new LuceneQuery(session);
         }
-
-        #endregion
 
         public ICanAddDesignDoc Database(string database)
         {
             db = database;
             return this;
         }
-        
-        #region Parameters
 
         public ICanAddIndex DesignDocument(string designDoc)
         {
@@ -102,6 +102,10 @@ namespace ReactiveCloudant.Lucene
             this.index = indexName;
             return this;
         }
+
+        #endregion
+
+        #region Parameters
 
         public ICanAddParameters Bookmark(string bookmark)
         {
