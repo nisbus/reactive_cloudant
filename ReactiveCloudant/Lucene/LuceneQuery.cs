@@ -61,7 +61,7 @@ namespace ReactiveCloudant.Lucene
         bool staleok;
         string group;
         int grouplimit;
-        List<string> groupSorts = new List<string>();
+        List<string> groupSorts = new List<string>();        
         string query = string.Empty;
 
         #endregion
@@ -136,12 +136,14 @@ namespace ReactiveCloudant.Lucene
         public ICanAddParameters Counts(IList<string> counts)
         {
             if(counts != null)
-                this.counts.AddRange(counts);
+                foreach(var count in counts)
+                this.counts.Add(Escape(count));
             return this;
         }
+
         public ICanAddParameters Drilldown(string field, string value)
         {
-            this.drilldown.Add(field, value);
+            this.drilldown.Add(Escape(field), Escape(value));
             return this;
         }
 
@@ -275,6 +277,8 @@ namespace ReactiveCloudant.Lucene
 
         #endregion
 
+        #region Execute queries
+
         public IObservable<LuceneResult<T>> Execute<T>()
         {
             return Observable.Create<LuceneResult<T>>(observer =>
@@ -395,10 +399,14 @@ namespace ReactiveCloudant.Lucene
             });
         }
 
+        #endregion
+
         private string BuildOptions()
         {
             if(!string.IsNullOrWhiteSpace(bookmark) && staleok)
-                throw new ArgumentException(@"Do not combine the bookmark and stale options. The reason is that both these options constrain the choice of shard replicas to use for determining the response. When used together, the options can result in problems when attempting to contact slow or unavailable replicas.");
+                throw new ArgumentException("Do not combine the bookmark and stale options. \rn"+
+                                            "The reason is that both these options constrain the choice of shard replicas to use for determining the response. \rn"+
+                                            "When used together, the options can result in problems when attempting to contact slow or unavailable replicas.");
             string ret = string.Empty;
             List<string> options = new List<string>();
             if(facet)
@@ -409,17 +417,36 @@ namespace ReactiveCloudant.Lucene
                 options.Add("limit=" + limit.ToString());
             if (includeDocs)
                 options.Add("include_docs=true");
+            if (counts != null && counts.Count > 0)
+                options.Add("counts=["+string.Join(",",counts)+"]");
+            if (drilldown != null && drilldown.Count > 0)
+                foreach (var drill in drilldown)
+                    options.Add("drilldown=[" + drill.Key + "," + drill.Value + "]");
+            if (sorts != null && sorts.Count > 0)
+            {
+                if (sorts.Count == 1)
+                    options.Add("sorts=" + sorts[0]);
+                else
+                {
+                    options.Add("sorts=[" + string.Join(",", sorts) + "]");
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(group))
+                options.Add("group_field=" + group);
+            if (grouplimit > 0)
+                options.Add("group_limit=" + grouplimit);
+            if (groupSorts != null && groupSorts.Count > 0)
+            {
+                if (sorts.Count == 1)
+                    options.Add("group_sort=" + groupSorts[0]);
+                else
+                {
+                    options.Add("group_sort=[" + string.Join(",", groupSorts) + "]");
+                }
+            }
             if (options.Count > 0)
                 return "&" + string.Join("&", options);
             else return string.Empty;
-            /*            
-            counts
-            drilldown
-            sorts                                    
-            group;
-            grouplimit;
-            groupSorts
-             */
         }        
     }    
 }
