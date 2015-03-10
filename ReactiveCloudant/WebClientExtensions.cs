@@ -11,6 +11,7 @@ using System.Reactive.Concurrency;
 using System.Reactive.Subjects;
 using System.IO;
 using Newtonsoft.Json;
+using ReactiveCloudant.Lucene;
 
 namespace ReactiveCloudant
 {
@@ -116,6 +117,49 @@ namespace ReactiveCloudant
             });
         }
 
+        internal static IObservable<string> DownloadStringAsObservable(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
+        {
+            return Observable.Create<string>(observer =>
+            {
+                DownloadStringCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.UserState != userToken) return;
+
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {                            
+                            observer.OnNext(args.Result);
+                            observer.OnCompleted();
+
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+                client.DownloadStringCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                    client.DownloadStringAsync(address, userToken);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.DownloadStringCompleted -= handler;
+            });
+        }
+
         internal static IObservable<T> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
         {
             return Observable.Create<T>(observer =>
@@ -157,6 +201,50 @@ namespace ReactiveCloudant
                 }
 
                 return () => client.DownloadStringCompleted -= handler;                
+            });
+        }
+
+        internal static IObservable<LuceneResult<T>> DownloadAndConvertAsObservable<T>(this WebClient client, Uri address, Func<string, LuceneResult<T>> convertMethod, string username = "", string password = "", object userToken = null, IScheduler converterScheduler = null)
+        {
+            return Observable.Create<LuceneResult<T>>(observer =>
+            {
+                DownloadStringCompletedEventHandler handler = (sender, args) =>
+                {
+                    if (args.UserState != userToken) return;
+
+                    if (args.Cancelled)
+                        observer.OnCompleted();
+                    else if (args.Error != null)
+                        observer.OnError(args.Error);
+                    else
+                    {
+                        try
+                        {
+                            var result = convertMethod(args.Result);
+                            observer.OnNext(result);
+                            observer.OnCompleted();
+
+                        }
+                        catch (Exception ex)
+                        {
+                            observer.OnError(ex);
+                        }
+                    }
+                };
+                client.DownloadStringCompleted += handler;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                        client.SetAuthenticationHeaders(username, password);
+                    client.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+                    client.DownloadStringAsync(address, userToken);
+                }
+                catch (Exception ex)
+                {
+                    observer.OnError(ex);
+                }
+
+                return () => client.DownloadStringCompleted -= handler;
             });
         }
 
