@@ -69,6 +69,7 @@
     <Compile Include="Lucene\Interfaces\ICanAddIndex.cs" />
     <Compile Include="Lucene\Interfaces\ICanAddParameters.cs" />
     <Compile Include="Lucene\Interfaces\ICanAddQuery.cs" />
+    <Compile Include="Lucene\Interfaces\ICanPrintQuery.cs" />
     <Compile Include="Lucene\Interfaces\ICanRunQuery.cs" />
     <Compile Include="Lucene\LuceneQuery.cs" />
     <Compile Include="Lucene\LuceneResult.cs" />

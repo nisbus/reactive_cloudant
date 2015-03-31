@@ -61,14 +61,16 @@ namespace ReactiveCloudant
         public Index()
         {
             Definition = new IndexDefinition();
-
         }
 
         public void AddField(IndexField field)
         {
-            var a = new JArray();
-            a.Add(JObject.Parse("{\""+field.FieldName+"\":\""+field.SortOrder+"\"}"));
-            Definition.fields.Add(field.FieldName, a);
+            if (!string.IsNullOrWhiteSpace(field.FieldName) && !Definition.fields.ContainsKey(field.FieldName))
+            {
+                var a = new JArray();
+                a.Add(JObject.Parse("{\"" + field.FieldName + "\":\"" + field.SortOrder + "\"}"));
+                Definition.fields.Add(field.FieldName, a);
+            }
         }
     }
 

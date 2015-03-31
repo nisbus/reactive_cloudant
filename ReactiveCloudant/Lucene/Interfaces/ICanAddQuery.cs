@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace ReactiveCloudant.Lucene.Interfaces
 {
-    public interface ICanAddQuery : ICanRunQuery
+    public interface ICanAddQuery : ICanRunQuery, ICanPrintQuery
     {
         ICanAddQuery And(string field, string condition);
         ICanAddQuery Or(string field, string condition);

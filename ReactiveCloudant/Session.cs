@@ -742,6 +742,7 @@ namespace ReactiveCloudant
                         if (c >= 1)
                             body += ",";
                         body += "{\"" + i.FieldName + "\":\"" + i.SortOrder + "\"}";
+                        c++;
                     }
                     body += "]}";
                     if (!string.IsNullOrWhiteSpace(indexToSave.Name))
@@ -1153,13 +1154,20 @@ namespace ReactiveCloudant
         internal string BuildCloudantQuery(string selector, List<string> returnFields, int? limit, int? skip = null, int readQuorum = 1, List<IndexField> sorting = null)
         {
             string query = selector;
+            bool includeTrailingBracket = (returnFields != null && returnFields.Count > 0) || 
+                                          (limit.HasValue && limit > 0) || 
+                                          (skip.HasValue && skip.Value > 0) || 
+                                          (sorting != null && sorting.Count > 0);
+
+            if (includeTrailingBracket)
+                query = query.Remove(query.LastIndexOf('}'), 1);
             if (returnFields != null && returnFields.Count > 0)
             {
                 query += ",\"fields\": [";
                 foreach (var f in returnFields)
                     query += "\""+f+"\",";
                 query = query.TrimEnd(',');
-                query += "]";
+                query += "]";                
             }
 
             if (limit.HasValue && limit > 0)
@@ -1167,18 +1175,19 @@ namespace ReactiveCloudant
                 query += ",\"limit\":" + limit.Value;
             }
             if (skip.HasValue && skip.Value > 0)
+            {
                 query += ",\"skip\":" + skip.Value;
-
+            }
             if (sorting != null && sorting.Count > 0)
             {
-
                 query += ",\"sort\": [";
                 foreach (var s in sorting)
                     query += "{\"" + s.FieldName + "\": \""+s.SortOrder+"\"},";
                 query = query.TrimEnd(',');
-                query += "]"; 
+                query += "]";
             }
-            query += "}";
+            if (includeTrailingBracket)
+                query += "}";
             return query;
         }
 

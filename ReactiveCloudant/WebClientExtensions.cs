@@ -333,7 +333,6 @@ namespace ReactiveCloudant
                                     }
                                     else
                                     {
-
                                         foreach (JObject o in rows.Value)
                                         {
                                             string id = string.Empty;
@@ -633,20 +632,27 @@ namespace ReactiveCloudant
             }
             else
             {
-                var prop = obj.Property("value");
-                if (prop != null)
+                try
                 {
-                    if (prop.Value is JObject)
+                    var prop = obj.Property("value");
+                    if (prop != null)
                     {
-                        return ((JObject)prop.Value).ToObject<T>();
+                        if (prop.Value is JObject)
+                        {
+                            return ((JObject)prop.Value).ToObject<T>();
+                        }
+                        else
+                        {
+                            return prop.Value.Value<T>();
+                        }
                     }
                     else
-                    {
-                        return prop.Value.Value<T>();
-                    }
+                        return obj.Values().Value<T>();
                 }
-                else
-                    return obj.Values().Value<T>();
+                catch
+                {
+                    return obj.ToObject<T>();
+                }
             }
         }
 

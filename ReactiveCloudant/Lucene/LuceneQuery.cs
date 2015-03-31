@@ -43,7 +43,31 @@ namespace ReactiveCloudant.Lucene
     ///     }
     /// }
     /// </example>
-    public class LuceneQuery : ICanAddDatabase, ICanAddDesignDoc, ICanAddIndex,ICanAddGroups, ICanAddParameters, ICanAddQuery, ICanRunQuery
+    /// 
+    public static class TEST
+    {
+        /*
+        public static void LuceneTest()
+         {
+             var session = new CloudantSession(url, username, password);
+             LuceneQuery.Session(session)
+                        .Database("myDatabase")
+                        .DesignDocument("mySearchDesignDoc")
+                        .Index("mySearchIndex")
+                        .StaleOK(true)
+                        .IncludeDocs(true)
+                        .Fuzzy("myField","fuzzymatch")
+                        .And("docType","sampleDoc")
+                        .Execute<MyResultType>()
+                        .Subscribe(results =>
+                        {
+                             
+                        });
+         }
+         */
+    }
+    
+    public class LuceneQuery : ICanAddDatabase, ICanAddDesignDoc, ICanAddIndex,ICanAddGroups, ICanAddParameters, ICanAddQuery, ICanRunQuery, ICanPrintQuery
     {
         #region fields
 
@@ -141,13 +165,13 @@ namespace ReactiveCloudant.Lucene
         {
             if(counts != null)
                 foreach(var count in counts)
-                this.counts.Add(Escape(count));
+                this.counts.Add(count);
             return this;
         }
 
         public ICanAddParameters Drilldown(string field, string value)
         {
-            this.drilldown.Add(Escape(field), Escape(value));
+            this.drilldown.Add(field, value);
             return this;
         }
 
@@ -193,9 +217,10 @@ namespace ReactiveCloudant.Lucene
 
         #region Query
 
-        private static List<string> needEscaping = new List<string> { "+", "-", "&&", "||", "!", "(", ")", "{", "}", "[", "]", "^", "\"", "~", "*", "?", ":", "\\", "/" };
+        private static List<string> needEscaping = new List<string> { "+", "-", "&&", "||", "!", "(", ")", "{", "}", "[", "]", "^", "\"", "~", "*", "?", ":", "/" };
         private static string Escape(string value)
         {
+            value = value.Replace("\\", "\\\\");
             foreach (var e in needEscaping)
                 value = value.Replace(e, "\\" + e);
             value = value.Replace(" ", "%c5%20");
@@ -204,15 +229,16 @@ namespace ReactiveCloudant.Lucene
         private static string AddToQuery(string field, string condition, string operation, string query)
         {
 
-            var qstring = operation + " " + Escape(field) + ":" + Escape(condition);
+            var qstring = operation + " " + Escape(field) + ":" + condition;
             if (string.IsNullOrWhiteSpace(query))
-                return qstring;
+                return Escape(field) + ":" + condition;
             else
                 return query + " " + qstring;
         }
 
         public ICanAddQuery And(string field, string condition)
         {
+            
             query = AddToQuery(field, condition, "AND", query);
             return this;
         }
@@ -243,7 +269,7 @@ namespace ReactiveCloudant.Lucene
 
         public ICanAddQuery Fuzzy(string field, string condition)
         {
-            var fuzz = Escape(field)+":"+Escape(condition)+"~";
+            var fuzz = field+":"+condition+"~";
             if (!string.IsNullOrWhiteSpace(query))
                 query += " " + fuzz;
             else
@@ -256,7 +282,7 @@ namespace ReactiveCloudant.Lucene
             string range = string.Empty;
             if (!string.IsNullOrWhiteSpace(query))
                 range += " ";
-            range = Escape(field) + ":[" + Escape(lowerRange) + " TO " + Escape(upperRange) + "]";
+            range = field + ":[" + lowerRange + " TO " + upperRange + "]";
             query += range;
             return this;
         }
@@ -266,7 +292,7 @@ namespace ReactiveCloudant.Lucene
             if (!string.IsNullOrWhiteSpace(query))
                 query += " ";
             
-            query += Escape(field)+":"+Escape(startString)+"*";
+            query += field+":"+startString+"*";
             return this;
         }
 
@@ -275,7 +301,7 @@ namespace ReactiveCloudant.Lucene
             if (!string.IsNullOrWhiteSpace(query))
                 query += " ";
 
-            query += Escape(field) + ":" + Escape(startString) + "?";
+            query += field + ":" + startString + "?";
             return this;
         }
 
@@ -305,7 +331,7 @@ namespace ReactiveCloudant.Lucene
                         if (!includeDocs)
                         {
                             var fields = row["fields"];
-                            foreach (JObject field in fields)
+                            foreach (JProperty field in fields)
                             {
                                 res.Results.Add(field.ToObject<T>());
                             }
@@ -344,7 +370,7 @@ namespace ReactiveCloudant.Lucene
         {
             return Observable.Create<LuceneResult>(observer =>
             {
-                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index+"?q="+query+BuildOptions();
+                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index + "?q=" + query+ BuildOptions();
                 Func<string, LuceneResult> conv = (json) =>
                 {
                     LuceneResult retVal = new LuceneResult();
@@ -362,10 +388,9 @@ namespace ReactiveCloudant.Lucene
                         if (!includeDocs)
                         {
                             var fields = row["fields"];
-                            foreach (JObject field in fields)
-                            {
-                                foreach (var prop in field.Properties())
-                                    res.Results.Add(prop.Name, prop.Value);
+                            foreach (JProperty field in fields)
+                            {                                
+                                res.Results.Add(field.Name, field.Value);
                             }
                         }
                         else
@@ -403,6 +428,125 @@ namespace ReactiveCloudant.Lucene
             });
         }
 
+        public IObservable<LuceneResult<T>> Execute<T>(string query)
+        {
+            return Observable.Create<LuceneResult<T>>(observer =>
+            {
+                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index + "?q=" + query + BuildOptions();
+                Func<string, LuceneResult<T>> conv = (json) =>
+                {
+                    LuceneResult<T> retVal = new LuceneResult<T>();
+                    var j = JObject.Parse(json);
+                    retVal.TotalRows = j.Value<int>("total_rows");
+                    retVal.Bookmark = j.Value<string>("bookmark");
+                    var rows = j.Value<JArray>("rows");
+                    foreach (var row in rows)
+                    {
+                        LuceneRow<T> res = new LuceneRow<T>();
+                        res.Id = row.Value<string>("id");
+                        var order = ((JArray)row["order"]);
+                        foreach (var o in order)
+                            res.Order.Add(o.ToObject<double>());
+                        if (!includeDocs)
+                        {
+                            var fields = row["fields"];
+                            foreach (JProperty field in fields)
+                            {
+                                res.Results.Add(field.ToObject<T>());
+                            }
+                        }
+                        else
+                        {
+                            res.Results.Add(row["doc"].ToObject<T>());
+                        }
+                        retVal.Rows.Add(res);
+                    }
+                    return retVal;
+                };
+                //var query = BuildCloudantQuery(selector, returnFields, limit: limit, sorting: sorting, skip: skip, readQuorum: readQuorum);
+                using (WebClient client = new WebClient())
+                {
+                    client.DownloadStringAsObservable(new Uri(url), session.Username, session.Password).Subscribe(result =>
+                    {
+                        try
+                        {
+                            observer.OnNext(conv.Invoke(result));
+                        }
+                        catch (Exception error)
+                        {
+                            observer.OnError(error);
+                        }
+                    },
+                    (e) => observer.OnError(e),
+                    () => observer.OnCompleted());
+                }
+
+                return () => { };
+            });
+        }
+
+        public IObservable<LuceneResult> Execute(string query)
+        {
+            return Observable.Create<LuceneResult>(observer =>
+            {
+                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index + "?q=" + query + BuildOptions();
+                Func<string, LuceneResult> conv = (json) =>
+                {
+                    LuceneResult retVal = new LuceneResult();
+                    var j = JObject.Parse(json);
+                    retVal.TotalRows = j.Value<int>("total_rows");
+                    retVal.Bookmark = j.Value<string>("bookmark");
+                    var rows = j.Value<JArray>("rows");
+                    foreach (var row in rows)
+                    {
+                        LuceneRow res = new LuceneRow();
+                        res.Id = row.Value<string>("id");
+                        var order = ((JArray)row["order"]);
+                        foreach (var o in order)
+                            res.Order.Add(o.ToObject<double>());
+                        if (!includeDocs)
+                        {
+                            var fields = row["fields"];
+                            foreach (JProperty field in fields)
+                            {
+                                res.Results.Add(field.Name, field.Value);
+                            }
+                        }
+                        else
+                        {
+
+                            JObject doc = row["doc"] as JObject;
+                            foreach (var prop in doc.Properties())
+                            {
+                                res.Results.Add(prop.Name, prop.Value);
+                            }
+                        }
+                        retVal.Rows.Add(res);
+                    }
+                    return retVal;
+                };
+                //var query = BuildCloudantQuery(selector, returnFields, limit: limit, sorting: sorting, skip: skip, readQuorum: readQuorum);
+                using (WebClient client = new WebClient())
+                {
+                    client.DownloadStringAsObservable(new Uri(url), session.Username, session.Password).Subscribe(result =>
+                    {
+                        try
+                        {
+                            observer.OnNext(conv.Invoke(result));
+                        }
+                        catch (Exception error)
+                        {
+                            observer.OnError(error);
+                        }
+                    },
+                    (e) => observer.OnError(e),
+                    () => observer.OnCompleted());
+                }
+
+                return () => { };
+            });
+        }
+        
         #endregion
 
         private string BuildOptions()
@@ -451,6 +595,15 @@ namespace ReactiveCloudant.Lucene
             if (options.Count > 0)
                 return "&" + string.Join("&", options);
             else return string.Empty;
-        }        
+        }
+
+        #region ICanPrintQuery
+
+        public string ShowQuery()
+        {
+            return query;
+        }
+
+        #endregion
     }    
 }
