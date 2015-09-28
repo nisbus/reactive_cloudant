@@ -7,6 +7,7 @@ using Microsoft.QualityTools.Testing.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Reactive.Linq;
 using System.Reactive.Concurrency;
+using System.Threading.Tasks;
 
 namespace ReactiveCloudant.UnitTests
 {
@@ -192,6 +193,24 @@ namespace ReactiveCloudant.UnitTests
         {
             var session = new CloudantSession("https://cloudant.com");
             Assert.AreEqual("?startkey=\"start\"", session.SetQueryParameters("", "start", "", false, false, false, 0, 0));
-        }       
+        }
+
+        [TestMethod]
+        [TestCategory("API")]
+        public void CreateAPIKeyAndModifyPermissions()
+        {
+            string username = "nisbus";
+            string db = "api_tests";
+            bool done = false;
+            Task.Run(async () =>
+                {
+                    var session = new CloudantSession("https://nisbus.cloudant.com", username, "Mustang65!!");
+                    //var created = await session.CreateDatabase(db);
+                    var key = await session.CreateAPIKey();
+                    var permissions = await session.SetPermissions(db, key.Username, true, true, false);
+                    done = true;
+                });
+            while (!done) { }
+         }
     }
 }

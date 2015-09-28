@@ -872,8 +872,8 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>A stream that returns the APIKey generated and includes the new username and password</returns>
         public IObservable<APIKey> CreateAPIKey(string progressToken = "")
-        {
-            var url = "https://cloudant.com/_api/v2/api_keys";
+        {        
+            var url = "https://"+Username+".cloudant.com/_api/v2/api_keys";
             
             Subject<APIKey> key = new Subject<APIKey>();            
             using (WebClient client = new WebClient())
@@ -911,22 +911,26 @@ namespace ReactiveCloudant
         /// <returns>a single string on the form ok {ok:true}</returns>
         public IObservable<string> SetPermissions(string database, string username, bool reader = false, bool writer = false, bool admin = false, bool creator = false, string progressToken = "")
         {
-            var withoutProtocol = BaseUrl.Replace("https://", "");            
-            var account = withoutProtocol.Substring(0,withoutProtocol.IndexOf('.'));
-            string rolesString = "database=" + account + "/" + database + "&username=" + username;
-            if (reader)
-                rolesString += "&roles=_reader";
-            if (writer)
-                rolesString += "&roles=_writer";
-            if (admin)
-                rolesString += "&roles=_admin";
-            if (creator)
-                rolesString += "&roles=_creator";
+            //var withoutProtocol = BaseUrl.Replace("https://", "");            
+            //var account = withoutProtocol.Substring(0,withoutProtocol.IndexOf('.'));
+            var uri = "https://" + Username + ".cloudant.com/_api/v2/db/" + database + "/_security";
+            //throw new NotSupportedException("Changes to the cloudant API haven't been implemented for this call");
             using (var client = new WebClient())
             {
-                client.UploadProgressChangedAsObservable(progressToken).Subscribe((pg) => progress.OnNext(pg));                
-                return client.UploadStringAsObservable(new Uri("https://cloudant.com/api/set_permissions"), "POST", rolesString, Username, Password, progressToken);
-            }            
+                string rolesString = "{\"" + database + "\" : {\"" + username + "\" : [";
+                List<string> roles = new List<string>();
+
+                if (reader)
+                    roles.Add("\"_reader\"");
+                if (writer)
+                    roles.Add("\"_writer\"");
+                if (admin)
+                    roles.Add("\"_admin\"");
+
+                rolesString += string.Join(",", roles);
+                rolesString += "]}}";
+                return client.UploadStringAsObservable(new Uri(uri), "PUT", rolesString, Username, Password);
+            }
         }
 
         /// <summary>
