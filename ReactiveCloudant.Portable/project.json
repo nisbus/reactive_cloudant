@@ -1,10 +1,9 @@
 ﻿{
   "supports": {},
   "dependencies": {
-    "Newtonsoft.Json": "9.0.1",
+    "Newtonsoft.Json": "10.0.3",
     "Portable.Text.Encoding": "0.8.3",
-    "reactiveui-core": "6.5.0",
-    "Rx-Core": "2.2.5"
+    "reactiveui": "8.0.0-alpha0034"
   },
   "frameworks": {
     ".NETPortable,Version=v4.5,Profile=Profile7": {}

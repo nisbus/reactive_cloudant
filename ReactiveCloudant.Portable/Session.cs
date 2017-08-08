@@ -92,65 +92,69 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>A successful save operation will return a single SaveResult object containing the ID and REV of the document</returns>
         /// <exception cref="ArgumentException"></exception>
-        public async Task<IObservable<SaveResult>> Save(string database, object item, string id = "", string revision_id = "", string progressToken = "")
+        public IObservable<SaveResult> Save(string database, object item, string id = "", string revision_id = "", string progressToken = "")
         {
+
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database to save to");
             if (item == null)
                 throw new ArgumentException("Cannot save null object");
+            return Observable.Create<SaveResult>(async observer =>
+            {
+                var url = BaseUrl + database + "/";
+                string json = string.Empty;
+                if (item is string)
+                    json = (string)item;
+                else
+                    json = JsonConvert.SerializeObject(item);
+                json = await SetID(json, id);
 
-            var url = BaseUrl + database + "/";
-            string json = string.Empty;
-            if (item is string)
-                json = (string)item;
-            else
-                json = JsonConvert.SerializeObject(item);
-            json = await SetID(json, id);
+                if (!string.IsNullOrWhiteSpace(revision_id))
+                    json = SetRev(json, revision_id);
+                Subject<SaveResult> saveResult = new Subject<SaveResult>();
 
-            if (!string.IsNullOrWhiteSpace(revision_id))
-                json = SetRev(json, revision_id);
-            Subject<SaveResult> saveResult = new Subject<SaveResult>();
-
-            using (HttpClient client = new HttpClient())
-            {                
-                client.UploadStringAsObservable(new Uri(url), "POST", json, Username, Password).Subscribe(s =>
+                using (HttpClient client = new HttpClient())
                 {
-                    try
+                    client.UploadStringAsObservable(new Uri(url), "POST", json, Username, Password).Subscribe(s =>
                     {
-                        string doc_id = string.Empty;
-                        string rev_id = string.Empty;
-                        string error = string.Empty;
+                        try
+                        {
+                            string doc_id = string.Empty;
+                            string rev_id = string.Empty;
+                            string error = string.Empty;
 
-                        var response = JObject.Parse(s);
-                        var e = response.Property("error");
-                        if (e != null)
-                        {
-                            var reason = response.Property("reason");
-                            error = e.Value.ToString() + " - " + reason.Value.ToString();
-                        }
-                        var idProp = response.Property("id");
-                        if (idProp != null)
-                        {
-                            JValue val = idProp.Value as JValue;
-                            doc_id = idProp.Value.ToString();
-                        }
+                            var response = JObject.Parse(s);
+                            var e = response.Property("error");
+                            if (e != null)
+                            {
+                                var reason = response.Property("reason");
+                                error = e.Value.ToString() + " - " + reason.Value.ToString();
+                            }
+                            var idProp = response.Property("id");
+                            if (idProp != null)
+                            {
+                                JValue val = idProp.Value as JValue;
+                                doc_id = idProp.Value.ToString();
+                            }
 
-                        var revision = response.Property("rev");
-                        if (revision != null)
-                        {
-                            JValue val = revision.Value as JValue;
-                            rev_id = val.Value.ToString();
+                            var revision = response.Property("rev");
+                            if (revision != null)
+                            {
+                                JValue val = revision.Value as JValue;
+                                rev_id = val.Value.ToString();
+                            }
+                            saveResult.OnNext(new SaveResult(doc_id, rev_id, error));
                         }
-                        saveResult.OnNext(new SaveResult(doc_id, rev_id, error));
-                    }
-                    catch (Exception e)
-                    {
-                        saveResult.OnError(e);
-                    }
-                }, (e) => saveResult.OnError(e),
-                    () => saveResult.OnCompleted());
-                return saveResult.AsObservable();
-            }
+                        catch (Exception e)
+                        {
+                            saveResult.OnError(e);
+                        }
+                    }, (e) => saveResult.OnError(e),
+                        () => saveResult.OnCompleted());
+                    saveResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());
+                }
+                return () => { };
+            });
         }
 
         /// <summary>
@@ -186,75 +190,79 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>A successful save operation will a SaveResult object for each document saved</returns>
         /// <exception cref="ArgumentException"></exception>
-        public async Task<IObservable<SaveResult>> BulkDelete(string database, IList<Document<dynamic>> documents, string progressToken = "")
+        public IObservable<SaveResult> BulkDelete(string database, IList<Document<dynamic>> documents, string progressToken = "")
         {
-            if (string.IsNullOrWhiteSpace(database))
-                throw new ArgumentException("You must specify a database to delete from");
-            if (documents == null)
-                throw new ArgumentException("Cannot delete null object");
-
-            var url = BaseUrl + database + "/_bulk_docs";
-            string sb = "{\"docs\": [";
-            foreach (var d in documents)
+            return Observable.Create<SaveResult>(async observer =>
             {
-                if (string.IsNullOrWhiteSpace(d.ID) || string.IsNullOrWhiteSpace(d.Version))
-                    throw new ArgumentException("All documents need to have both version and id to be deleted");
+                if (string.IsNullOrWhiteSpace(database))
+                    throw new ArgumentException("You must specify a database to delete from");
+                if (documents == null)
+                    throw new ArgumentException("Cannot delete null object");
 
-                string json = JsonConvert.SerializeObject(d.Item);
-                json = await SetID(json, d.ID);                
-                json = SetRev(json, d.Version);
-                json = SetDeleted(json);
-                sb += json + ",";
-
-            }
-            sb = sb.TrimEnd(new char[] { ',' }) + "]}";
-            Subject<SaveResult> deleteResult = new Subject<SaveResult>();
-
-            using (HttpClient client = new HttpClient())
-            {                
-                client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
+                var url = BaseUrl + database + "/_bulk_docs";
+                string sb = "{\"docs\": [";
+                foreach (var d in documents)
                 {
-                    try
+                    if (string.IsNullOrWhiteSpace(d.ID) || string.IsNullOrWhiteSpace(d.Version))
+                        throw new ArgumentException("All documents need to have both version and id to be deleted");
+
+                    string json = JsonConvert.SerializeObject(d.Item);
+                    json = await SetID(json, d.ID);
+                    json = SetRev(json, d.Version);
+                    json = SetDeleted(json);
+                    sb += json + ",";
+
+                }
+                sb = sb.TrimEnd(new char[] { ',' }) + "]}";
+                Subject<SaveResult> deleteResult = new Subject<SaveResult>();
+
+                using (HttpClient client = new HttpClient())
+                {
+                    client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
                     {
-                        string doc_id = string.Empty;
-                        string rev_id = string.Empty;
-                        string error = string.Empty;
-                        var responses = JArray.Parse(s);
-                        foreach (JObject response in responses)
+                        try
                         {
-                            var e = response.Property("error");
-                            if (e != null)
+                            string doc_id = string.Empty;
+                            string rev_id = string.Empty;
+                            string error = string.Empty;
+                            var responses = JArray.Parse(s);
+                            foreach (JObject response in responses)
                             {
-                                var reason = response.Property("reason").Value.ToString();
-                                error = e.Value.ToString() + " - " + reason;
-                            }
-                            else
-                            {
-                                var revision = response.Property("rev");
-                                if (revision != null)
+                                var e = response.Property("error");
+                                if (e != null)
                                 {
-                                    JValue val = revision.Value as JValue;
-                                    rev_id = val.Value.ToString();
+                                    var reason = response.Property("reason").Value.ToString();
+                                    error = e.Value.ToString() + " - " + reason;
                                 }
+                                else
+                                {
+                                    var revision = response.Property("rev");
+                                    if (revision != null)
+                                    {
+                                        JValue val = revision.Value as JValue;
+                                        rev_id = val.Value.ToString();
+                                    }
+                                }
+                                var idProp = response.Property("id");
+                                if (idProp != null)
+                                {
+                                    JValue val = idProp.Value as JValue;
+                                    doc_id = idProp.Value.ToString();
+                                }
+                                deleteResult.OnNext(new SaveResult(doc_id, rev_id, error));
+                                error = string.Empty;
                             }
-                            var idProp = response.Property("id");
-                            if (idProp != null)
-                            {
-                                JValue val = idProp.Value as JValue;
-                                doc_id = idProp.Value.ToString();
-                            }
-                            deleteResult.OnNext(new SaveResult(doc_id, rev_id, error));
-                            error = string.Empty;
                         }
-                    }
-                    catch (Exception e)
-                    {
-                        deleteResult.OnError(e);
-                    }
-                }, (e) => deleteResult.OnError(e),
-                    () => deleteResult.OnCompleted());
-                return deleteResult.AsObservable();
-            }
+                        catch (Exception e)
+                        {
+                            deleteResult.OnError(e);
+                        }
+                    }, (e) => deleteResult.OnError(e),
+                        () => deleteResult.OnCompleted());
+                    deleteResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                    
+                }
+                return () => { };
+            });
         }
 
         /// <summary>
@@ -265,77 +273,82 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>A successful save operation will a SaveResult object for each document saved</returns>
         /// <exception cref="ArgumentException"></exception>
-        public async Task<IObservable<SaveResult>> BulkSave(string database, IList<Document<dynamic>> documents, string progressToken = "")
+        public IObservable<SaveResult> BulkSave(string database, IList<Document<dynamic>> documents, string progressToken = "")
         {
-            if (string.IsNullOrWhiteSpace(database))
-                throw new ArgumentException("You must specify a database to save to");
-            if (documents == null)
-                throw new ArgumentException("Cannot save null object");
-
-            var url = BaseUrl + database + "/_bulk_docs";
-            string sb = "{\"docs\": [";            
-            foreach (var d in documents)
+            return Observable.Create<SaveResult>(async observer =>
             {
-                string json = string.Empty;
-                if (d.Item is string)
-                    json = d.Item;
-                else
-                    json = JsonConvert.SerializeObject(d.Item);
-                if(!string.IsNullOrWhiteSpace(d.ID))
-                    json = await SetID(json, d.ID);
+                if (string.IsNullOrWhiteSpace(database))
+                    throw new ArgumentException("You must specify a database to save to");
+                if (documents == null)
+                    throw new ArgumentException("Cannot save null object");
 
-                if (!string.IsNullOrWhiteSpace(d.Version))
-                    json = SetRev(json, d.Version);
-                sb += json+",";
-            }
-            sb = sb.TrimEnd(new char[]{','})+ "]}";
-            Subject<SaveResult> saveResult = new Subject<SaveResult>();
-
-            using (HttpClient client = new HttpClient())
-            {
-                client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
+                var url = BaseUrl + database + "/_bulk_docs";
+                string sb = "{\"docs\": [";
+                foreach (var d in documents)
                 {
-                    try
+                    string json = string.Empty;
+                    if (d.Item is string)
+                        json = d.Item;
+                    else
+                        json = JsonConvert.SerializeObject(d.Item);
+                    if (!string.IsNullOrWhiteSpace(d.ID))
+                        json = await SetID(json, d.ID);
+
+                    if (!string.IsNullOrWhiteSpace(d.Version))
+                        json = SetRev(json, d.Version);
+                    sb += json + ",";
+                }
+                sb = sb.TrimEnd(new char[] { ',' }) + "]}";
+                Subject<SaveResult> saveResult = new Subject<SaveResult>();
+
+                using (HttpClient client = new HttpClient())
+                {
+                    client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
                     {
-                        string doc_id = string.Empty;
-                        string rev_id = string.Empty;
-                        string error = string.Empty;                        
-                        var responses = JArray.Parse(s);
-                        foreach (JObject response in responses)
+                        try
                         {
-                            var e = response.Property("error");
-                            if (e != null)
-                            {                                
-                                var reason = response.Property("reason").Value.ToString();
-                                error = e.Value.ToString()+" - "+reason;
-                            }
-                            else
+                            string doc_id = string.Empty;
+                            string rev_id = string.Empty;
+                            string error = string.Empty;
+                            var responses = JArray.Parse(s);
+                            foreach (JObject response in responses)
                             {
-                                var revision = response.Property("rev");
-                                if (revision != null)
+                                var e = response.Property("error");
+                                if (e != null)
                                 {
-                                    JValue val = revision.Value as JValue;
-                                    rev_id = val.Value.ToString();
+                                    var reason = response.Property("reason").Value.ToString();
+                                    error = e.Value.ToString() + " - " + reason;
                                 }
+                                else
+                                {
+                                    var revision = response.Property("rev");
+                                    if (revision != null)
+                                    {
+                                        JValue val = revision.Value as JValue;
+                                        rev_id = val.Value.ToString();
+                                    }
+                                }
+                                var idProp = response.Property("id");
+                                if (idProp != null)
+                                {
+                                    JValue val = idProp.Value as JValue;
+                                    doc_id = idProp.Value.ToString();
+                                }
+                                saveResult.OnNext(new SaveResult(doc_id, rev_id, error));
+                                error = string.Empty;
                             }
-                            var idProp = response.Property("id");
-                            if (idProp != null)
-                            {
-                                JValue val = idProp.Value as JValue;
-                                doc_id = idProp.Value.ToString();
-                            }
-                            saveResult.OnNext(new SaveResult(doc_id, rev_id,error));
-                            error = string.Empty;
                         }
-                    }
-                    catch (Exception e)
-                    {
-                        saveResult.OnError(e);
-                    }
-                }, (e) => saveResult.OnError(e),
-                    () => saveResult.OnCompleted());
-                return saveResult.AsObservable();
-            }
+                        catch (Exception e)
+                        {
+                            saveResult.OnError(e);
+                        }
+                    }, (e) => saveResult.OnError(e),
+                        () => saveResult.OnCompleted());
+
+                    saveResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                    
+                }
+                return () => { };
+            });
         }
 
         /// <summary>
