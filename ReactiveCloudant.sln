@@ -1,13 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.27004.2010
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReactiveCloudant", "ReactiveCloudant\ReactiveCloudant.csproj", "{6A66C082-3C4F-4223-B279-11919A151E7F}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReactiveCloudant.UnitTests", "ReactiveCloudant.UnitTests\ReactiveCloudant.UnitTests.csproj", "{DA9CE4C2-02D5-4BB5-8B56-984AABB481CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReactiveCloudant.Portable", "ReactiveCloudant.Portable\ReactiveCloudant.Portable.csproj", "{0E4473F2-912B-4172-9B5C-DEA38A3B2027}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReactiveCloudant.Core", "ReactiveCloudant.Core\ReactiveCloudant.Core.csproj", "{1D099B07-8346-40BA-AFAB-6310132AE6FE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,20 +13,19 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{6A66C082-3C4F-4223-B279-11919A151E7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6A66C082-3C4F-4223-B279-11919A151E7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6A66C082-3C4F-4223-B279-11919A151E7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6A66C082-3C4F-4223-B279-11919A151E7F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DA9CE4C2-02D5-4BB5-8B56-984AABB481CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DA9CE4C2-02D5-4BB5-8B56-984AABB481CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DA9CE4C2-02D5-4BB5-8B56-984AABB481CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DA9CE4C2-02D5-4BB5-8B56-984AABB481CA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0E4473F2-912B-4172-9B5C-DEA38A3B2027}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0E4473F2-912B-4172-9B5C-DEA38A3B2027}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0E4473F2-912B-4172-9B5C-DEA38A3B2027}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0E4473F2-912B-4172-9B5C-DEA38A3B2027}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D099B07-8346-40BA-AFAB-6310132AE6FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D099B07-8346-40BA-AFAB-6310132AE6FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D099B07-8346-40BA-AFAB-6310132AE6FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D099B07-8346-40BA-AFAB-6310132AE6FE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {806B8382-547F-4EA4-8D19-478AC915D31C}
 	EndGlobalSection
 EndGlobal
