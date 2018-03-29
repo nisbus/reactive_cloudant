@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -14,6 +13,9 @@ using System.Threading.Tasks;
 
 namespace ReactiveCloudant
 {
+    /// <summary>
+    /// A cloudant session manages the connection to the database
+    /// </summary>
     public class CloudantSession
     {
         #region Properties
@@ -65,7 +67,7 @@ namespace ReactiveCloudant
         /// <summary>
         /// Gets a single document from the database
         /// </summary>
-        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List[T] since the response will send each individual item to the stream.</typeparam>
         /// <param name="document_id">The ID of the document to get</param>
         /// <param name="database">The database the view belongs to</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
@@ -354,22 +356,29 @@ namespace ReactiveCloudant
         /// <summary>
         /// Calls a view in the database
         /// </summary>
-        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List[T] since the response will send each individual item to the stream.</typeparam>
         /// <param name="database">The database the view belongs to</param>
-        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
-        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="designdocument">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="view">The name of the view to get</param>
         /// <param name="key">Optional seach key</param>
         /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
         /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
-        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="includedocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="inclusiveend">Boolean indicating whether to include the end or not</param>
+        /// <param name="descending">Boolean indicating whether to sort the result in descending order or not</param>
+        /// <param name="limit">Sets a limit on the number of results to return</param>
+        /// <param name="skip">Sets an index for where in the results to begin i.e. skip the first 10</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <param name="staleok">Whether stale documents are ok</param>        
+        /// <param name="group_level">The level to group by (default 0)</param>
         /// <param name="reduce">Whether the view should be reduced</param>
         /// <param name="group">Whether to group the results or not</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
         /// <exception cref="ArgumentException"></exception>
-        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey = "", bool includedocs = false, bool inclusiveend = false, bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true, int group_level = 0, bool reduce = false, bool group = false)
+        public IObservable<Document<T>> View<T>(string database, string designdocument, string view, string key = "", string startKey = "", string endKey = "", bool includedocs = false, bool inclusiveend = false, 
+                                                bool descending = false, int limit = 0, int skip = 0, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true, int group_level = 0, 
+                                                bool reduce = false, bool group = false)
         {
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify the database","database");
@@ -395,16 +404,21 @@ namespace ReactiveCloudant
         /// <summary>
         /// Calls a list function in the database for the specified view
         /// </summary>
-        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List[T] since the response will send each individual item to the stream.</typeparam>
         /// <param name="database">The database the view belongs to</param>
-        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
-        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="designdocument">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="list">The name of the list to get</param>
+        /// <param name="view">The view to call</param>
         /// <param name="key">Optional seach key</param>
         /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
         /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
-        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="includedocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="inclusiveend">Boolean indicating whether to include the end or not</param>
+        /// <param name="descending">Boolean indicating whether to sort the result in descending order or not</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="limit">Sets a limit on the number of results to return</param>
+        /// <param name="skip">Sets an index for where in the results to begin i.e. skip the first 10</param>
         /// <param name="staleok">Whether stale documents are ok</param>
         /// <param name="requestParams">Additional request parameters in the form paramname=paramvalue</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
@@ -449,16 +463,21 @@ namespace ReactiveCloudant
         /// <summary>
         /// Calls a list function in the database for the specified view
         /// </summary>
-        /// <typeparam name="T">The type of the object to retrieve, don't use List<T> since the response will send each individual item to the stream."/></typeparam>
+        /// <typeparam name="T">The type of the object to retrieve, don't use List[T] since the response will send each individual item to the stream.</typeparam>
         /// <param name="database">The database the view belongs to</param>
-        /// <param name="designDoc">The design document the view belongs to (you don't have to include the _design part</param>
-        /// <param name="viewName">The name of the view to get</param>
+        /// <param name="designdocument">The design document the view belongs to (you don't have to include the _design part</param>
+        /// <param name="show">The name of the show function to get</param>
+        /// <param name="document_id">The id of the document to show</param>
         /// <param name="key">Optional seach key</param>
         /// <param name="startKey">Optional range argument for keys, note that key and startkey are mutually exclusive</param>
         /// <param name="endKey">Optional end range argument for keys, you must specify a startkey to use the endkey</param>
-        /// <param name="includeDocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="includedocs">Boolean indicating whether the docs from the view should be included in the query</param>
+        /// <param name="inclusiveend">Boolean indicating whether to include the end or not</param>
+        /// <param name="descending">Boolean indicating whether to sort the result in descending order or not</param>
         /// <param name="converterScheduler">A scheduler used to execute the conversion from json to a .NET object (this can be useful when creating UI objects that need to be created on the UI thread)</param>
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
+        /// <param name="limit">Sets a limit on the number of results to return</param>
+        /// <param name="skip">Sets an index for where in the results to begin i.e. skip the first 10</param>
         /// <param name="staleok">Whether stale documents are ok</param>
         /// <param name="requestParams">Additional request parameters in the form paramname=paramvalue</param>
         /// <returns>An observable sequence that will materialize as each object is deserialized</returns>
@@ -519,6 +538,14 @@ namespace ReactiveCloudant
         }
 
 
+        /// <summary>
+        /// returns the contents of an attachment of a document
+        /// </summary>
+        /// <param name="document_id">The id of the document to search for attachments on</param>
+        /// <param name="attachment_name">The name of the attachment</param>
+        /// <param name="database">The database the document is in</param>
+        /// <param name="staleok">Wheter stale attachments should be returned</param>
+        /// <returns>An observable byte[]</returns>
         public IObservable<byte[]> Attachment(string document_id, string attachment_name, string database, bool staleok = true)
         {
             if (string.IsNullOrWhiteSpace(database))
@@ -664,7 +691,7 @@ namespace ReactiveCloudant
         /// <param name="timeout">A timeout for stopping the listener</param>
         /// <param name="descending">Whether documents should be ordered in a descending order when returned</param>
         /// <param name="convererScheduler">A scheduler to create the objects on, useful for UI objects in for example WPF</param>
-        /// <returns>A Poll<T> object which contains the document and the last sequence number"/></returns>
+        /// <returns>A Poll[T] object which contains the document and the last sequence number</returns>
         public IObservable<Poll<T>> Changes<T>(string database, IList<string> document_ids = null, string filter = null, bool include_docs = false, int? heartbeat = null, int? limit = null, string since = null, int? timeout = null, bool descending = false, IScheduler convererScheduler = null)
         {
             if (string.IsNullOrWhiteSpace(database))
@@ -818,6 +845,9 @@ namespace ReactiveCloudant
         /// <param name="selector">The selector as a string (see http://docs.cloudant.com/api.html#selector-syntax)</param>
         /// <param name="returnFields">The fields to return from the query, leave empty to get all of the data</param>
         /// <param name="limit">Limit the number of rows to return</param>
+        /// <param name="readQuorum"></param>
+        /// <param name="skip"></param>
+        /// <param name="sorting"></param>
         /// <returns>A stream of T from the index query</returns>
         public IObservable<T> QueryIndex<T>(string database, string selector, List<string> returnFields = null, int? limit = null, int? skip = null, int readQuorum = 1, List<IndexField> sorting = null)
         {
