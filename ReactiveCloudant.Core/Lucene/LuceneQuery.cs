@@ -413,7 +413,7 @@ namespace ReactiveCloudant.Lucene
         {
             return Observable.Create<LuceneResult<T>>(observer =>
             {
-                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index+"?q="+_Query+BuildOptions();
+                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index + "?q=" + _Query + BuildOptions();
                 LuceneResult<T> conv(string json)
                 {
                     LuceneResult<T> retVal = new LuceneResult<T>();
@@ -447,24 +447,21 @@ namespace ReactiveCloudant.Lucene
                     return retVal;
                 }
                 //var query = BuildCloudantQuery(selector, returnFields, limit: limit, sorting: sorting, skip: skip, readQuorum: readQuorum);
-                using (HttpClient client = new HttpClient())
+                HttpClient client = new HttpClient();
+                client.DownloadStringAsObservable(new Uri(url), session.Username, session.Password).Subscribe(result =>
                 {
-                    client.DownloadStringAsObservable(new Uri(url), session.Username, session.Password).Subscribe(result =>
+                    try
                     {
-                        try
-                        {
-                            observer.OnNext(conv(result));
-                        }
-                        catch (Exception error)
-                        {
-                            observer.OnError(error);
-                        }
-                    },
-                    (e) => observer.OnError(e),
-                    () => observer.OnCompleted());
-                }
-
-                return () => { };
+                        observer.OnNext(conv(result));
+                    }
+                    catch (Exception error)
+                    {
+                        observer.OnError(error);
+                    }
+                },
+                (e) => observer.OnError(e),
+                () => observer.OnCompleted());
+                return () => { client.Dispose(); };
             });
         }
 
@@ -476,7 +473,7 @@ namespace ReactiveCloudant.Lucene
         {
             return Observable.Create<LuceneResult>(observer =>
             {
-                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index + "?q=" + _Query+ BuildOptions();
+                string url = session.BaseUrl + db + "/" + designDoc + "/_search/" + index + "?q=" + _Query + BuildOptions();
                 LuceneResult conv(string json)
                 {
                     LuceneResult retVal = new LuceneResult();
@@ -515,24 +512,21 @@ namespace ReactiveCloudant.Lucene
                     return retVal;
                 }
                 //var query = BuildCloudantQuery(selector, returnFields, limit: limit, sorting: sorting, skip: skip, readQuorum: readQuorum);
-                using (HttpClient client = new HttpClient())
+                HttpClient client = new HttpClient();
+                client.DownloadStringAsObservable(new Uri(url), session.Username, session.Password).Subscribe(result =>
                 {
-                    client.DownloadStringAsObservable(new Uri(url), session.Username, session.Password).Subscribe(result =>
+                    try
                     {
-                        try
-                        {
-                            observer.OnNext(conv(result));
-                        }
-                        catch (Exception error)
-                        {
-                            observer.OnError(error);
-                        }
-                    },
-                    (e) => observer.OnError(e),
-                    () => observer.OnCompleted());
-                }
-
-                return () => { };
+                        observer.OnNext(conv(result));
+                    }
+                    catch (Exception error)
+                    {
+                        observer.OnError(error);
+                    }
+                },
+                (e) => observer.OnError(e),
+                () => observer.OnCompleted());
+                return () => { client.Dispose(); };
             });
         }
 

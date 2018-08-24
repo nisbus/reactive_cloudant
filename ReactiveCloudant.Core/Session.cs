@@ -78,10 +78,8 @@ namespace ReactiveCloudant
         public IObservable<Document<T>> Document<T>(string document_id, string database, IScheduler converterScheduler = null, string progressToken = "", bool staleok = true)
         {
             var url = CreateGetUrl(document_id, database, staleok);
-            using (HttpClient client = new HttpClient())
-            {                
-                return client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
-            }
+            HttpClient client = new HttpClient();            
+            return client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);            
         }
 
         /// <summary>
@@ -115,8 +113,7 @@ namespace ReactiveCloudant
                     json = SetRev(json, revision_id);
                 Subject<SaveResult> saveResult = new Subject<SaveResult>();
 
-                using (HttpClient client = new HttpClient())
-                {
+                HttpClient client = new HttpClient();                
                     client.UploadStringAsObservable(new Uri(url), "POST", json, Username, Password).Subscribe(s =>
                     {
                         try
@@ -153,9 +150,8 @@ namespace ReactiveCloudant
                         }
                     }, (e) => saveResult.OnError(e),
                         () => saveResult.OnCompleted());
-                    saveResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());
-                }
-                return () => { };
+                    saveResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                
+                return () => { client.Dispose(); };
             });
         }
 
@@ -178,10 +174,12 @@ namespace ReactiveCloudant
 
             var url = BaseUrl + database + "/" + document_id;
             url += "?rev=" + revision_id;
-            using (HttpClient client = new HttpClient())
-            {                
-                return client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
-            }
+            HttpClient client = new HttpClient();
+
+            
+            var obs = client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;            
         }
 
         /// <summary>
@@ -218,52 +216,50 @@ namespace ReactiveCloudant
                 sb = sb.TrimEnd(new char[] { ',' }) + "]}";
                 Subject<SaveResult> deleteResult = new Subject<SaveResult>();
 
-                using (HttpClient client = new HttpClient())
+                HttpClient client = new HttpClient();                
+                client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
                 {
-                    client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
+                    try
                     {
-                        try
+                        string doc_id = string.Empty;
+                        string rev_id = string.Empty;
+                        string error = string.Empty;
+                        var responses = JArray.Parse(s);
+                        foreach (JObject response in responses)
                         {
-                            string doc_id = string.Empty;
-                            string rev_id = string.Empty;
-                            string error = string.Empty;
-                            var responses = JArray.Parse(s);
-                            foreach (JObject response in responses)
+                            var e = response.Property("error");
+                            if (e != null)
                             {
-                                var e = response.Property("error");
-                                if (e != null)
-                                {
-                                    var reason = response.Property("reason").Value.ToString();
-                                    error = e.Value.ToString() + " - " + reason;
-                                }
-                                else
-                                {
-                                    var revision = response.Property("rev");
-                                    if (revision != null)
-                                    {
-                                        JValue val = revision.Value as JValue;
-                                        rev_id = val.Value.ToString();
-                                    }
-                                }
-                                var idProp = response.Property("id");
-                                if (idProp != null)
-                                {
-                                    JValue val = idProp.Value as JValue;
-                                    doc_id = idProp.Value.ToString();
-                                }
-                                deleteResult.OnNext(new SaveResult(doc_id, rev_id, error));
-                                error = string.Empty;
+                                var reason = response.Property("reason").Value.ToString();
+                                error = e.Value.ToString() + " - " + reason;
                             }
+                            else
+                            {
+                                var revision = response.Property("rev");
+                                if (revision != null)
+                                {
+                                    JValue val = revision.Value as JValue;
+                                    rev_id = val.Value.ToString();
+                                }
+                            }
+                            var idProp = response.Property("id");
+                            if (idProp != null)
+                            {
+                                JValue val = idProp.Value as JValue;
+                                doc_id = idProp.Value.ToString();
+                            }
+                            deleteResult.OnNext(new SaveResult(doc_id, rev_id, error));
+                            error = string.Empty;
                         }
-                        catch (Exception e)
-                        {
-                            deleteResult.OnError(e);
-                        }
-                    }, (e) => deleteResult.OnError(e),
-                        () => deleteResult.OnCompleted());
-                    deleteResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                    
-                }
-                return () => { };
+                    }
+                    catch (Exception e)
+                    {
+                        deleteResult.OnError(e);
+                    }
+                }, (e) => deleteResult.OnError(e),
+                    () => deleteResult.OnCompleted());
+                deleteResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                    
+                return () => { client.Dispose(); };
             });
         }
 
@@ -303,8 +299,7 @@ namespace ReactiveCloudant
                 sb = sb.TrimEnd(new char[] { ',' }) + "]}";
                 Subject<SaveResult> saveResult = new Subject<SaveResult>();
 
-                using (HttpClient client = new HttpClient())
-                {
+                HttpClient client = new HttpClient();                
                     client.UploadStringAsObservable(new Uri(url), "POST", sb, Username, Password).Subscribe(s =>
                     {
                         try
@@ -347,9 +342,8 @@ namespace ReactiveCloudant
                     }, (e) => saveResult.OnError(e),
                         () => saveResult.OnCompleted());
 
-                    saveResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                    
-                }
-                return () => { };
+                    saveResult.Subscribe(result => observer.OnNext(result), (e) => observer.OnError(e), () => observer.OnCompleted());                                    
+                return () => { client.Dispose(); };
             });
         }
 
@@ -395,10 +389,8 @@ namespace ReactiveCloudant
                 else
                     url += "?stale=ok";
             }
-            using (HttpClient client = new HttpClient())
-            {
-                return client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
-            }
+            HttpClient client = new HttpClient();
+            return client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
         }
 
         /// <summary>
@@ -454,10 +446,10 @@ namespace ReactiveCloudant
                 else
                     url += "?" + requestParams;
             }
-            using (HttpClient client = new HttpClient())
-            {                
-                return client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
-            }
+            HttpClient client = new HttpClient();            
+            var obs = client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;
         }
 
         /// <summary>
@@ -511,10 +503,10 @@ namespace ReactiveCloudant
                 else
                     url += "?" + requestParams;
             }
-            using (HttpClient client = new HttpClient())
-            {
-                return client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
-            }
+            HttpClient client = new HttpClient();
+            var obs=  client.DownloadAndConvertDocumentAsObservable<T>(new Uri(url), Username, Password, progressToken, converterScheduler: converterScheduler);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;
         }
 
         #endregion
@@ -531,10 +523,10 @@ namespace ReactiveCloudant
         public IObservable<Attachment> Attachments(string document_id, string database, bool staleok = true)
         {
             var url = CreateGetUrl(document_id, database, staleok);
-            using (HttpClient client = new HttpClient())
-            {
-                return client.Attachments(new Uri(url), Username, Password);
-            }
+            HttpClient client = new HttpClient();            
+            var obs = client.Attachments(new Uri(url), Username, Password);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;
         }
 
 
@@ -558,10 +550,10 @@ namespace ReactiveCloudant
                 url += document_id + "/" + attachment_name + "?stale=ok";
             else
                 url += document_id + "/" + attachment_name;
-            using (HttpClient client = new HttpClient())
-            {
-                return client.DownloadAttachment(new Uri(url), username: Username, password: Password);
-            }
+            HttpClient client = new HttpClient();            
+            var obs = client.DownloadAttachment(new Uri(url), username: Username, password: Password);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;
         }
 
         /// <summary>
@@ -578,8 +570,7 @@ namespace ReactiveCloudant
             return Observable.Create<byte[]>(observer =>
             {
                 var url = CreateGetUrl(document_id, database, staleok);
-                using (HttpClient client = new HttpClient())
-                {
+                HttpClient client = new HttpClient();                
                     if (attachment_name != null)
                     {
                         client.Attachments(new Uri(url), Username, Password).Where(a => a.Name == attachment_name).Subscribe(async attachment =>
@@ -601,9 +592,12 @@ namespace ReactiveCloudant
                                 observer.OnNext(await attachment.Data(Username, Password).RunAsync(source.Token));
                         }, (e) => observer.OnError(e),
                         () => observer.OnCompleted());
-                    }
-                }
-                return () => { source.Cancel(); };
+                    }                
+                return () => 
+                {
+                    source.Cancel();
+                    client.Dispose();
+                };
             });
         }
 
@@ -636,41 +630,47 @@ namespace ReactiveCloudant
                 url += "?rev=" + revision_id;
 
             Subject<SaveResult> saveResult = new Subject<SaveResult>();
-            using (HttpClient client = new HttpClient())
-            {                
-                client.UploadDataAsObservable(new Uri(url), contentType, "PUT", attachment, Username, Password).Subscribe(s =>
+            HttpClient client = new HttpClient();            
+            client.UploadDataAsObservable(new Uri(url), contentType, "PUT", attachment, Username, Password).Subscribe(s =>
+            {
+                try
                 {
-                    try
+                    var result = Encoding.UTF8.GetString(s,0, s.Length);
+                    string doc_id = string.Empty;
+                    string rev_id = string.Empty;
+                    var response = JObject.Parse(result);
+                    var idProp = response.Property("id");
+                    if (idProp != null)
                     {
-                        var result = Encoding.UTF8.GetString(s,0, s.Length);
-                        string doc_id = string.Empty;
-                        string rev_id = string.Empty;
-                        var response = JObject.Parse(result);
-                        var idProp = response.Property("id");
-                        if (idProp != null)
-                        {
-                            JValue val = idProp.Value as JValue;
-                            doc_id = idProp.Value.ToString();
-                        }
-
-                        var revision = response.Property("rev");
-                        if (revision != null)
-                        {
-                            JValue val = revision.Value as JValue;
-                            rev_id = val.Value.ToString();
-                        }
-                        saveResult.OnNext(new SaveResult(doc_id, rev_id));
-                        saveResult.OnCompleted();
+                        JValue val = idProp.Value as JValue;
+                        doc_id = idProp.Value.ToString();
                     }
-                    catch (Exception e)
+
+                    var revision = response.Property("rev");
+                    if (revision != null)
                     {
-                        saveResult.OnError(e);
+                        JValue val = revision.Value as JValue;
+                        rev_id = val.Value.ToString();
                     }
-                }, (e) => saveResult.OnError(e),
-                    () => saveResult.OnCompleted());
-                return saveResult.AsObservable();
-            }
-
+                    saveResult.OnNext(new SaveResult(doc_id, rev_id));
+                    saveResult.OnCompleted();
+                }
+                catch (Exception e)
+                {
+                    saveResult.OnError(e);
+                    client.Dispose();
+                }
+            },(e) =>
+            {
+                saveResult.OnError(e);
+                client.Dispose();
+            },
+              () =>
+              {
+                  saveResult.OnCompleted();
+                  client.Dispose();
+              });
+            return saveResult.AsObservable();
         }
 
         #endregion
@@ -716,29 +716,29 @@ namespace ReactiveCloudant
         {
             return Observable.Create<Index>(observer =>
             {
+                HttpClient client = new HttpClient();
                 try
                 {
                     if (string.IsNullOrWhiteSpace(database))
                         throw new ArgumentException("You must specify a database to create");
                     var url = BaseUrl + database + "/_index";
-                    using (HttpClient client = new HttpClient())
+
+
+                    client.DownloadAndConvertAsObservable<IndexList>(new Uri(url), Username, Password).Subscribe(index =>
                     {
-                        client.DownloadAndConvertAsObservable<IndexList>(new Uri(url), Username, Password).Subscribe(index =>
+                        foreach (var i in index.Indexes)
                         {
-                            foreach (var i in index.Indexes)
-                            {
-                                observer.OnNext(i);
-                            }
-                        },
-                            (e) => observer.OnError(e),
-                            () => observer.OnCompleted());
-                    }
+                            observer.OnNext(i);
+                        }
+                    },
+                        (e) => observer.OnError(e),
+                        () => observer.OnCompleted());
                 }
                 catch (Exception error)
                 {
-                    observer.OnError(error);
+                    observer.OnError(error);                    
                 }
-                return () => { };
+                return () => { client.Dispose(); };
             });
         }
 
@@ -753,6 +753,7 @@ namespace ReactiveCloudant
         {
             return Observable.Create<bool>(observer =>
             {
+                HttpClient client = new HttpClient();
                 try
                 {
                     int c = 0;
@@ -772,52 +773,51 @@ namespace ReactiveCloudant
                     body += ",\"type\":\"json\"}";
 
                     string url = BaseUrl + database + "/_index";
-                    using (HttpClient client = new HttpClient())
+
+
+                    client.UploadStringAsObservable(new Uri(url), "POST", body, Username, Password).Subscribe(result =>
                     {
-                        client.UploadStringAsObservable(new Uri(url), "POST", body, Username, Password).Subscribe(result =>
+                        var saved = JObject.Parse(result);
+                        var r = saved["result"].ToString();
+                        if (r.ToLowerInvariant() == "created")
                         {
-                            var saved = JObject.Parse(result);
-                            var r = saved["result"].ToString();
-                            if (r.ToLowerInvariant() == "created")
+                            observer.OnNext(true);
+                            observer.OnCompleted();
+                        }
+                        else if (r.ToLowerInvariant() == "exists")
+                        {
+                            if (overwrite)
                             {
-                                observer.OnNext(true);
+                                DeleteIndex(database, indexToSave.DesignDoc, indexToSave.Name).Subscribe(deleteResult =>
+                                {
+                                    var deleted = JObject.Parse(deleteResult);
+                                    bool success = deleted["ok"].Value<bool>();
+                                    if (success)
+                                    {
+                                        CreateIndex(database, indexToSave, false).Subscribe(overwritten =>
+                                        {
+                                            observer.OnNext(overwritten);
+
+                                        }, (e) => observer.OnError(e),
+                                            () => observer.OnCompleted());
+                                    }
+
+                                },
+                                    (e) => observer.OnError(e));
+                            }
+                            else
+                            {
+                                observer.OnNext(false);
                                 observer.OnCompleted();
                             }
-                            else if (r.ToLowerInvariant() == "exists")
-                            {
-                                if (overwrite)
-                                {
-                                    DeleteIndex(database, indexToSave.DesignDoc, indexToSave.Name).Subscribe(deleteResult =>
-                                    {
-                                        var deleted = JObject.Parse(deleteResult);
-                                        bool success = deleted["ok"].Value<bool>();
-                                        if (success)
-                                        {
-                                            CreateIndex(database, indexToSave, false).Subscribe(overwritten =>
-                                            {
-                                                observer.OnNext(overwritten);
-
-                                            }, (e) => observer.OnError(e),
-                                                () => observer.OnCompleted());
-                                        }
-
-                                    },
-                                        (e) => observer.OnError(e));
-                                }
-                                else
-                                {
-                                    observer.OnNext(false);
-                                    observer.OnCompleted();
-                                }
-                            }
-                        }, (e) => observer.OnError(e));
-                    }
+                        }
+                    }, (e) => observer.OnError(e));
                 }
                 catch (Exception ex)
                 {
                     observer.OnError(ex);
                 }
-                return () => { };
+                return () => { client.Dispose(); };
             });
         }
 
@@ -831,10 +831,11 @@ namespace ReactiveCloudant
         public IObservable<string> DeleteIndex(string database, string designDoc, string indexName)
         {
             string url = BaseUrl + database + "/_index/" + designDoc + "/json/" + indexName;
-            using (HttpClient client = new HttpClient())
-            {
-                return client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
-            }
+            HttpClient client = new HttpClient();            
+            var obs = client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;
+            
         }
 
         /// <summary>
@@ -852,34 +853,33 @@ namespace ReactiveCloudant
         public IObservable<T> QueryIndex<T>(string database, string selector, List<string> returnFields = null, int? limit = null, int? skip = null, int readQuorum = 1, List<IndexField> sorting = null)
         {
             return Observable.Create<T>(observer =>
-                {
-                    string url = BaseUrl + database + "/_find/";
-                    var query = BuildCloudantQuery(selector, returnFields, limit: limit, sorting:sorting, skip:skip, readQuorum: readQuorum);
-                    using (HttpClient client = new HttpClient())
-                    {
-                        client.UploadStringAsObservable(new Uri(url), "POST", query, Username, Password).Subscribe(result =>
-                        {
-                            var docs = JObject.Parse(result);
-                            try
-                            {
-                                var docPart = docs["docs"] as JArray;
-                                foreach (var d in docPart)
-                                {
-                                    observer.OnNext(d.ToObject<T>());
-                                }
-                            }
-                            catch(Exception error)
-                            {
-                                observer.OnError(error);
-                            }
-                        },
-                        (e) => observer.OnError(e),
-                        () => observer.OnCompleted());
-                    }
+            {
+                string url = BaseUrl + database + "/_find/";
+                var query = BuildCloudantQuery(selector, returnFields, limit: limit, sorting: sorting, skip: skip, readQuorum: readQuorum);
+                HttpClient client = new HttpClient();
 
-                    return () => { };
-                });
-        }        
+                client.UploadStringAsObservable(new Uri(url), "POST", query, Username, Password).Subscribe(result =>
+                {
+                    var docs = JObject.Parse(result);
+                    try
+                    {
+                        var docPart = docs["docs"] as JArray;
+                        foreach (var d in docPart)
+                        {
+                            observer.OnNext(d.ToObject<T>());
+                        }
+                    }
+                    catch (Exception error)
+                    {
+                        observer.OnError(error);
+                    }
+                },
+                (e) => observer.OnError(e),
+                () => observer.OnCompleted());
+
+                return () => { client.Dispose(); };
+            });
+        }
 
         #endregion
 
@@ -895,29 +895,36 @@ namespace ReactiveCloudant
         /// <param name="progressToken">a string that you can use to filter the progress stream of the session with.</param>
         /// <returns>A stream that returns the APIKey generated and includes the new username and password</returns>
         public IObservable<APIKey> CreateAPIKey(string progressToken = "")
-        {        
-            var url = "https://"+Username+".cloudant.com/_api/v2/api_keys";
-            
-            Subject<APIKey> key = new Subject<APIKey>();            
-            using (HttpClient client = new HttpClient())
-            {                
-                client.UploadStringAsObservable(new Uri(url), "POST", "", Username, Password).Subscribe(s =>
+        {
+            var url = "https://" + Username + ".cloudant.com/_api/v2/api_keys";
+
+            Subject<APIKey> key = new Subject<APIKey>();
+            HttpClient client = new HttpClient();
+            client.UploadStringAsObservable(new Uri(url), "POST", "", Username, Password).Subscribe(s =>
+                {
+                    try
                     {
-                        try
-                        {                            
-                            var json = JObject.Parse(s);
-                            var password = json["password"].ToString();
-                            var username = json["key"].ToString(); 
-                            key.OnNext(new APIKey(username, password));
-                        }
-                        catch (Exception e)
-                        {
-                            key.OnError(e);
-                        }
-                    },(e) => key.OnError(e),
-                    () => key.OnCompleted());
-                return key.AsObservable();
-            }
+                        var json = JObject.Parse(s);
+                        var password = json["password"].ToString();
+                        var username = json["key"].ToString();
+                        key.OnNext(new APIKey(username, password));
+                    }
+                    catch (Exception e)
+                    {
+                        key.OnError(e);
+                        client.Dispose();
+                    }
+                }, (e) =>
+                     {
+                    key.OnError(e);
+                    client.Dispose();
+                },
+                () =>
+                {
+                    key.OnCompleted();
+                    client.Dispose();
+                });
+            return key.AsObservable();
         }
 
         /// <summary>
@@ -937,22 +944,22 @@ namespace ReactiveCloudant
             //var account = withoutProtocol.Substring(0,withoutProtocol.IndexOf('.'));
             var uri = "https://" + Username + ".cloudant.com/_api/v2/db/" + database + "/_security";
             //throw new NotSupportedException("Changes to the cloudant API haven't been implemented for this call");
-            using (var client = new HttpClient())
-            {
-                string rolesString = "{\"" + database + "\" : {\"" + username + "\" : [";
-                List<string> roles = new List<string>();
+            var client = new HttpClient();
+            string rolesString = "{\"" + database + "\" : {\"" + username + "\" : [";
+            List<string> roles = new List<string>();
 
-                if (reader)
-                    roles.Add("\"_reader\"");
-                if (writer)
-                    roles.Add("\"_writer\"");
-                if (admin)
-                    roles.Add("\"_admin\"");
+            if (reader)
+                roles.Add("\"_reader\"");
+            if (writer)
+                roles.Add("\"_writer\"");
+            if (admin)
+                roles.Add("\"_admin\"");
 
-                rolesString += string.Join(",", roles);
-                rolesString += "]}}";
-                return client.UploadStringAsObservable(new Uri(uri), "PUT", rolesString, Username, Password);
-            }
+            rolesString += string.Join(",", roles);
+            rolesString += "]}}";
+            var obs = client.UploadStringAsObservable(new Uri(uri), "PUT", rolesString, Username, Password);
+            obs.Subscribe(_ => { }, () => client.Dispose());
+            return obs;
         }
 
         /// <summary>
@@ -966,10 +973,10 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database to create");
             var url = BaseUrl + database + "/";
-            using (HttpClient client = new HttpClient())
-            {
-                return client.UploadStringAsObservable(new Uri(url), "PUT", "", Username, Password);
-            }
+            HttpClient client = new HttpClient();            
+            var obs = client.UploadStringAsObservable(new Uri(url), "PUT", "", Username, Password);
+            obs.Subscribe((_) => { }, () => client.Dispose());
+            return obs;
         }
 
         /// <summary>
@@ -983,10 +990,11 @@ namespace ReactiveCloudant
             if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException("You must specify a database to delete");
             var url = BaseUrl + database + "/";
-            using (HttpClient client = new HttpClient())
-            {                
-                return client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
-            }
+            HttpClient client = new HttpClient();            
+            var obs = client.UploadStringAsObservable(new Uri(url), "DELETE", "", Username, Password);
+            obs.Subscribe(_ => { }, () => client.Dispose());
+            return obs;
+
         }
 
         /// <summary>
@@ -995,11 +1003,11 @@ namespace ReactiveCloudant
         /// <returns>A list of database names</returns>
         public IObservable<string> Databases()
         {
-            using (HttpClient client = new HttpClient())
-            {
-                var url = new Uri(BaseUrl + "_all_dbs");
-                return client.DownloadAndConvertDocumentAsObservable<string>(url, Username, Password).Select(x => x.Item);
-            }
+            HttpClient client = new HttpClient();            
+            var url = new Uri(BaseUrl + "_all_dbs");
+            var obs = client.DownloadAndConvertDocumentAsObservable<string>(url, Username, Password).Select(x => x.Item);
+            obs.Subscribe(_ => { }, () => client.Dispose());
+            return obs;
         }
 
         #endregion
@@ -1128,7 +1136,11 @@ namespace ReactiveCloudant
             if (!string.IsNullOrWhiteSpace(key) && (!string.IsNullOrWhiteSpace(startKey) || !string.IsNullOrWhiteSpace(endKey)))
                 throw new ArgumentException("Key and StartKey/EndKey are mutually exclusive","key");
             if (!string.IsNullOrWhiteSpace(key))
+            {
+                if(key.StartsWith("["))
+                    return "keys=\"" + key + "\"";
                 return "key=\"" + key + "\"";
+            }
             if (!string.IsNullOrWhiteSpace(startKey) && !string.IsNullOrWhiteSpace(endKey))
                 return "startkey=\"" + startKey + "\"&endkey=\"" + endKey + "\"";
             else if (!string.IsNullOrWhiteSpace(startKey))
@@ -1167,12 +1179,19 @@ namespace ReactiveCloudant
 
         internal async Task<string> GetID()
         {
-            using (var client = new HttpClient())
+            var client = new HttpClient();
+            string result = string.Empty;
+            try
             {
                 var ids = await client.GetStringAsync(BaseUrl + "_uuids");
                 var json = JObject.Parse(ids);
-                return json.Property("uuids").Value.FirstOrDefault().ToString();               
+                result = json.Property("uuids").Value.FirstOrDefault().ToString();
             }
+            finally
+            {
+                client.Dispose();
+            }
+            return result;
         }
 
         internal string BuildCloudantQuery(string selector, List<string> returnFields, int? limit, int? skip = null, int readQuorum = 1, List<IndexField> sorting = null)

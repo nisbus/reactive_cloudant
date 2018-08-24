@@ -1,19 +1,30 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.0;net45</TargetFrameworks>
+    <TargetFrameworks>netcoreapp2.1;net46;netcoreapp2.0</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
   </PropertyGroup>
+  <PropertyGroup>
+    <Authors>nisbus</Authors>
+    <Description>This package replaces other ReactiveCloudant packages with support for .net core.
+    Use this package to connect to Cloudant CouchDB instances from .NET</Description>
+    <Title>ReactiveCloudant.Core</Title>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageProjectUrl>https://github.com/nisbus/reactive_cloudant</PackageProjectUrl>    
+    <RepositoryUrl>https://github.com/nisbus/reactive_cloudant</RepositoryUrl>    
+    <Copyright>2018</Copyright>
+    <PackageTags>dotnetcore Cloudant CouchDB</PackageTags>    
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
-    <PackageReference Include="System.Reactive" Version="3.1.1" />
-    <PackageReference Include="System.Reactive.Core" Version="3.1.1" />
-    <PackageReference Include="System.Reactive.Interfaces" Version="3.1.1" />
-    <PackageReference Include="System.Reactive.Linq" Version="3.1.1" />
-    <PackageReference Include="System.Reactive.PlatformServices" Version="3.1.1" />
-    <PackageReference Include="System.Reactive.Providers" Version="3.1.1" />
+    <PackageReference Include="System.Reactive" Version="4.1.0" />
+    <PackageReference Include="System.Reactive.Core" Version="4.1.0" />
+    <PackageReference Include="System.Reactive.Interfaces" Version="4.1.0" />
+    <PackageReference Include="System.Reactive.Linq" Version="4.1.0" />
+    <PackageReference Include="System.Reactive.PlatformServices" Version="4.1.0" />
+    <PackageReference Include="System.Reactive.Providers" Version="4.1.0" />
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">

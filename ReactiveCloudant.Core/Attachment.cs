@@ -41,12 +41,12 @@ namespace ReactiveCloudant
         /// <returns></returns>
         public IObservable<byte[]> Data(string username, string password)
         {
-            using (var client = new HttpClient())
-            {
-                Uri url = new Uri(Url);
-                var u = url.AbsoluteUri + Name;
-                return client.DownloadAttachment(new Uri(u), ContentType, username, password);
-            }
+            var client = new HttpClient();            
+            Uri url = new Uri(Url);
+            var u = url.AbsoluteUri + Name;
+            var obs = client.DownloadAttachment(new Uri(u), ContentType, username, password);
+            obs.Subscribe(_ => { }, () => client.Dispose());
+            return obs;
         }
     }
 }

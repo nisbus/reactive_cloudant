@@ -58,7 +58,8 @@ namespace ReactiveCloudant
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                         client.SetAuthenticationHeaders(username, password);
-                    client.DefaultRequestHeaders.Add("Content-Type", "application/json");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    //client.DefaultRequestHeaders.Add("Content-Type", "application/json");
                     var response = await client.GetAsync(address);
                     if (response.IsSuccessStatusCode)
                     {
@@ -119,7 +120,8 @@ namespace ReactiveCloudant
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                         client.SetAuthenticationHeaders(username, password);
-                    client.DefaultRequestHeaders.Add("Content-Type", "application/json");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    //client.DefaultRequestHeaders.Add("Content-Type", "application/json");
                     var response = await client.GetAsync(address);
                     if (response.IsSuccessStatusCode)
                     {
@@ -154,7 +156,8 @@ namespace ReactiveCloudant
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                         client.SetAuthenticationHeaders(username, password);
-                    client.DefaultRequestHeaders.Add("Content-Type", "application/json");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    //client.DefaultRequestHeaders.Add("Content-Type", "application/json");
                     var response = await client.GetAsync(address);
                     if (response.IsSuccessStatusCode)
                     {
@@ -190,7 +193,8 @@ namespace ReactiveCloudant
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                         client.SetAuthenticationHeaders(username, password);
-                    client.DefaultRequestHeaders.Add("Content-Type", "application/json");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    //client.DefaultRequestHeaders.Add("Content-Type", "application/json");
                     var response = await client.GetAsync(address);
                     if (response.IsSuccessStatusCode)
                     {
@@ -234,7 +238,8 @@ namespace ReactiveCloudant
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                         client.SetAuthenticationHeaders(username, password);
-                    client.DefaultRequestHeaders.Add("Content-Type", "application/json");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    //client.DefaultRequestHeaders.Add("Content-Type", "application/json");
                     var response = await client.GetAsync(address);
                     if (response.IsSuccessStatusCode)
                     {
@@ -270,8 +275,13 @@ namespace ReactiveCloudant
                 {
                     if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                         client.SetAuthenticationHeaders(username, password);
-                    client.DefaultRequestHeaders.Add("Content-Type", "application/json");
-                    var response = await client.PostAsync(address, new StringContent(data));
+                    client.DefaultRequestHeaders.Accept.Clear();
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, address)
+                    {
+                        Content = new StringContent(data, Encoding.UTF8, "application/json")
+                    };
+                    var response = await client.SendAsync(request);
                     if (response.IsSuccessStatusCode)
                     {
                         observer.OnNext(await response.Content.ReadAsStringAsync());
